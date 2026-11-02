@@ -450,7 +450,7 @@ pub const Engine = struct {
         while (it.next()) |graph| graph.deinit();
         e.graphs.clearRetainingCapacity();
 
-        const previous = e.scratch_buf;
+        var previous = e.scratch_buf;
         const previous_capacity = e.scratch_capacity;
         e.scratch_buf = replacement;
         e.scratch_capacity = capacity;
