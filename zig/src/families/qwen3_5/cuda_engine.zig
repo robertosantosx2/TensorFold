@@ -278,6 +278,12 @@ pub const Engine = struct {
         e.startup.add(try profile.withCache(e.gpa, io, e, Cache));
     }
 
+    /// Re-run startup warmup after optional prompt INT8 is enabled, so its
+    /// maximum workspace and graph shapes are ready before the first request.
+    pub fn warmPromptInt8(e: *Engine, io: std.Io) !void {
+        e.startup.add(try profile.withCache(e.gpa, io, e, Cache));
+    }
+
     /// Every path a request takes, run once now: WDDM stalls a process's first forwards for seconds (a 20 s launch).
     pub fn warmCache(e: *Engine, warm_cache: *Cache) !void {
         // Capture the largest scratch shape before serving when it fits. On small

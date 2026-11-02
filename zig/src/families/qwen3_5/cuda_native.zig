@@ -144,7 +144,10 @@ pub fn open(gpa: std.mem.Allocator, io: std.Io, ctx: *const cuda.Context, dir: [
         e.g.context = r.ceiling;
         try @import("cuda_rope_table.zig").set(e, r.rope);
     }
-    if (o.prompt_int8) try e.int8.enable(e); // --prompt-precision int8: prompt projections quantize their inputs
+    if (o.prompt_int8) {
+        try e.int8.enable(e); // --prompt-precision int8: prompt projections quantize their inputs
+        try e.warmPromptInt8(io); // allocate/warm the optional INT8 workspace before admission
+    }
     if (e.g.vocab != c.vocab) return error.UnsupportedQwenVocab; // draw.zig's masks are sized by the 2B's vocabulary
     if (o.slide) _ = try @import("cuda_learn_shape.zig").from(e.g);
     // --vision: the checkpoint's tower, its weights and one call's scratch loaded beside the model's
