@@ -121,13 +121,13 @@ test "prompt int8: enable allocates once, failure retains no owner, and deinit i
     try T.expectEqual(@as(usize, 32), e.int8.capacity);
     try T.expectEqual(@as(usize, 1), Trace.frees);
 
-    // Failed growth must leave no stale workspace; a subsequent
-    // allocation must recover successfully.
+    // Failed growth preserves the previous workspace and its ownership.
     Trace.fail = true;
-    try T.expectError(error.NotReady, e.int8.ensureRows(&e, 33));
-    try T.expect(e.int8.buf == null and e.int8.ws == 0 and e.int8.capacity == 0);
+    try T.expectError(error.ScratchGrowFailed, e.int8.ensureRows(&e, 33));
+    try T.expect(e.int8.buf != null and e.int8.ws != 0 and e.int8.capacity == 32);
+    try T.expectEqual(cuda.w4a8.Kernels.scratch(32, 512), e.int8.buf.?.len);
     try T.expectEqual(@as(usize, 5), Trace.allocations);
-    try T.expectEqual(@as(usize, 2), Trace.frees);
+    try T.expectEqual(@as(usize, 1), Trace.frees);
 
     Trace.fail = false;
     try e.int8.ensureRows(&e, 33);
@@ -209,7 +209,7 @@ test "prompt int8: hand-built projection fixture initializes all newly read sele
 }
 
 
-test "cuda scratch: lazy allocation, growth, failed allocation clears owners, and retry recovers" {
+test "cuda scratch: lazy allocation, growth, failed growth preserves owners, and retry recovers" {
     var d: cuda.Driver = undefined;
     var e = engine(&d);
 
@@ -260,36 +260,28 @@ test "cuda scratch: lazy allocation, growth, failed allocation clears owners, an
     try T.expectEqual(@as(usize, 1), Trace.frees);
     _ = first_ptr;
 
-    // A failed growth must not leave the old allocation or any carved
-    // pointer reachable. The next call must be able to recover.
+    // A failed growth leaves the old allocation and every carved pointer valid.
     Trace.fail = true;
-    try T.expectError(error.NotReady, e.ensureScratch(3));
+    try T.expectError(error.ScratchGrowFailed, e.ensureScratch(3));
 
-    try T.expect(e.scratch_buf == null);
-    try T.expectEqual(@as(usize, 0), e.scratch_capacity);
-
+    try T.expect(e.scratch_buf != null);
+    try T.expectEqual(@as(usize, 2), e.scratch_capacity);
     inline for (.{
         "h", "x", "r", "y", "mix", "z", "v", "q", "k", "qkv",
         "gate", "up", "act", "xs", "a", "b", "beta", "g_",
         "qraw", "qn", "kraw", "vraw", "kn", "pm", "pl", "po",
         "logits", "amax", "picks",
     }) |field| {
-        try T.expectEqual(@as(u64, 0), @field(e, field));
+        try T.expect(@field(e, field) != 0);
     }
-
-    try T.expectEqual(@as(u64, 0), e.routed.logits);
-    try T.expectEqual(@as(u64, 0), e.routed.picks);
-    try T.expectEqual(@as(u64, 0), e.routed.wts);
-    try T.expectEqual(@as(u64, 0), e.routed.members);
-    try T.expectEqual(@as(u64, 0), e.routed.items);
-    try T.expectEqual(@as(u64, 0), e.routed.counts);
-    try T.expectEqual(@as(u64, 0), e.routed.rank);
-    try T.expectEqual(@as(u64, 0), e.routed.hist);
-    try T.expectEqual(@as(u64, 0), e.routed.act);
-    try T.expectEqual(@as(u64, 0), e.routed.y);
+    try T.expect(e.routed.logits != 0 and e.routed.picks != 0);
+    try T.expect(e.routed.wts != 0 and e.routed.members != 0);
+    try T.expect(e.routed.items != 0 and e.routed.counts != 0);
+    try T.expect(e.routed.rank != 0 and e.routed.hist != 0);
+    try T.expect(e.routed.act != 0 and e.routed.y != 0);
 
     try T.expectEqual(@as(usize, 3), Trace.allocations);
-    try T.expectEqual(@as(usize, 2), Trace.frees);
+    try T.expectEqual(@as(usize, 1), Trace.frees);
 
     // Retry after the injected CUDA allocation error.
     Trace.fail = false;

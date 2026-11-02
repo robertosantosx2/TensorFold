@@ -280,6 +280,14 @@ pub const Engine = struct {
 
     /// Every path a request takes, run once now: WDDM stalls a process's first forwards for seconds (a 20 s launch).
     pub fn warmCache(e: *Engine, warm_cache: *Cache) !void {
+        // Capture the largest scratch shape before serving when it fits. On small
+        // cards, retain the lazy path and warm only the small shapes below.
+        e.ensureScratch(max_rows) catch |err| {
+            if (err != error.ScratchGrowFailed) return err;
+        };
+        if (e.int8.on) e.int8.ensureRows(e, max_rows) catch |err| {
+            if (err != error.ScratchGrowFailed) return err;
+        };
         const ids: [32]u32 = @splat(0);
         const greedy: Draw = .{ .rule = null, .position = 33 };
         try e.forward(&.{.{ .cache = warm_cache, .rows = ids.len }}, &ids, .last); // a prompt chunk: the prompt GEMMs
@@ -394,7 +402,29 @@ pub const Engine = struct {
         return total;
     }
 
-    /// Grow scratch before a forward. Graphs must not retain pointers into a replaced allocation.
+    /// Bytes still to be admitted for the full forward and optional INT8 workspaces.
+    /// Already allocated capacity is accounted by CUDA's live usage and is not counted twice.
+    pub fn unallocatedScratchBytes(e: *const Engine) !usize {
+        var full_measure = e.*;
+        const full = try full_measure.scratch(max_rows, .measure);
+        var held: usize = 0;
+        if (e.scratch_capacity > 0) {
+            var held_measure = e.*;
+            held = try held_measure.scratch(e.scratch_capacity, .measure);
+        }
+        var remaining = full -| held;
+        if (e.int8.on) {
+            const g = e.g;
+            const k = @max(g.intermediate, g.valueWidth(), g.attnWidth(), g.hidden);
+            const int8_full = cuda.w4a8.Kernels.scratch(max_rows, k);
+            const int8_held = if (e.int8.capacity > 0) cuda.w4a8.Kernels.scratch(e.int8.capacity, k) else 0;
+            remaining += int8_full -| int8_held;
+        }
+        return remaining;
+    }
+
+    /// Grow scratch without sacrificing the previous allocation on failure.
+    /// Graphs are destroyed only after the replacement buffer has been allocated.
     pub fn ensureScratch(e: *Engine, rows: usize) !void {
         if (rows == 0 or rows > max_rows) return error.InvalidScratchRows;
         if (rows <= e.scratch_capacity) return;
@@ -402,19 +432,30 @@ pub const Engine = struct {
         var capacity = if (e.scratch_capacity == 0) rows else e.scratch_capacity;
         while (capacity < rows) capacity = @min(max_rows, capacity * 2);
 
-        try e.stream.synchronize();
+        var measured = e.*;
+        const bytes = try measured.scratch(capacity, .measure);
+        var replacement = DeviceBuffer.alloc(e.d, bytes) catch return error.ScratchGrowFailed;
+        e.stream.synchronize() catch |err| {
+            replacement.free();
+            return err;
+        };
+
         var it = e.graphs.valueIterator();
         while (it.next()) |graph| graph.deinit();
         e.graphs.clearRetainingCapacity();
 
-        if (e.scratch_buf) |*old| old.free();
-        e.scratch_buf = null;
-        e.scratch_capacity = 0;
-
-        const bytes = try e.scratch(capacity, .measure);
-        e.scratch_buf = try DeviceBuffer.alloc(e.d, bytes);
+        const previous = e.scratch_buf;
+        const previous_capacity = e.scratch_capacity;
+        e.scratch_buf = replacement;
         e.scratch_capacity = capacity;
-        _ = try e.scratch(capacity, .allocate);
+        _ = e.scratch(capacity, .allocate) catch |err| {
+            e.scratch_buf = previous;
+            e.scratch_capacity = previous_capacity;
+            if (previous_capacity > 0) _ = e.scratch(previous_capacity, .allocate) catch {};
+            replacement.free();
+            return err;
+        };
+        if (previous) |*old| old.free();
     }
 
     pub fn run(e: *Engine, f: cuda.Function, grid: [3]usize, block: [3]usize, args: anytype) !void {

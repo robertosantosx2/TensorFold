@@ -34,23 +34,24 @@ pub const State = struct {
         var capacity = if (s.capacity == 0) rows else s.capacity;
         while (capacity < rows) capacity = @min(max_rows, capacity * 2);
 
-        // Graphs may retain the previous workspace address.
+        // Allocate first: a failed grow must leave the previous workspace usable.
+        var replacement = cuda.DeviceBuffer.alloc(
+            e.d,
+            cuda.w4a8.Kernels.scratch(capacity, k),
+        ) catch return error.ScratchGrowFailed;
+        errdefer replacement.free();
+
         try e.stream.synchronize();
         var it = e.graphs.valueIterator();
         while (it.next()) |graph| graph.deinit();
         e.graphs.clearRetainingCapacity();
 
-        if (s.buf) |*old| old.free();
-        s.buf = null;
-        s.ws = 0;
-        s.capacity = 0;
-
-        s.buf = try cuda.DeviceBuffer.alloc(
-            e.d,
-            cuda.w4a8.Kernels.scratch(capacity, k),
-        );
-        s.ws = s.buf.?.ptr;
+        const previous = s.buf;
+        s.buf = replacement;
+        s.ws = replacement.ptr;
         s.capacity = capacity;
+        if (previous) |*old| old.free();
+        replacement = undefined;
     }
 
     pub fn deinit(s: *State) void {

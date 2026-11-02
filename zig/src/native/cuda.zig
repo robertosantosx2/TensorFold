@@ -371,10 +371,13 @@ fn openWith(comptime F: type, a: Allocator, gpa: Allocator, io: std.Io, o: api.O
     };
     var served = try drafted.wrap(F, a, gpa, io, loaded, o, problem) orelse return null;
     defer if (!opened) served.close(gpa);
-    const model = cuda.usage(false).device - held0;
+    const L = @TypeOf(loaded);
+    const unallocated_scratch: usize = if (@hasField(L, "scratch_bytes")) loaded.scratch_bytes else 0;
+    // Lazy scratch is reserved before stream/cache admission; eager scratch is already
+    // included in live CUDA usage and is therefore excluded by unallocatedScratchBytes().
+    const model = cuda.usage(false).device - held0 + @as(u64, @intCast(unallocated_scratch));
     const after = try pool(a, io, &g.ctx, problem) orelse return null;
     family_memory.noteParked(after, "the CUDA memory budget");
-    const L = @TypeOf(loaded); // a family's Loaded may leave out a learner and a lone driver
     const learn_bytes: usize = if (@hasField(L, "learn_bytes")) loaded.learn_bytes else 0;
     const host_cache = try kv_pages.placeHost(F, a, loaded, o, after.room(model), @intCast(window), served.stream_bytes, problem) orelse return null;
     const host_budget = if (host_cache and @hasDecl(F, "snap_save")) budget.hostCacheBytes(a, io, o.prompt_cache_gib) else 0;

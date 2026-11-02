@@ -65,6 +65,8 @@ pub const Loaded = struct {
     rows: u32,
     /// Device bytes each admitted stream allocates (recurrences, convolution tails, keys and values).
     stream_bytes: usize,
+    /// Forward and optional INT8 scratch not physically allocated yet; included in server admission.
+    scratch_bytes: usize = 0,
     free_streams: u32 = 0,
     ctx: *anyopaque,
     deinit: *const fn (*anyopaque) void,
@@ -161,6 +163,7 @@ pub fn open(gpa: std.mem.Allocator, io: std.Io, ctx: *const cuda.Context, dir: [
         .facts = modelFacts(@intCast(e.window_rows), @intCast(e.verify_rows), e.g),
         .rows = @intCast(e.window_rows),
         .stream_bytes = try cacheBytes(e, o.context, page_test),
+        .scratch_bytes = try e.unallocatedScratchBytes(),
         .ctx = l,
         .deinit = release,
         .reserve = reserve,
@@ -216,6 +219,7 @@ pub fn explain(ctx: ?*anyopaque, err: anyerror) ?[]const u8 {
         error.BadImageGrid, error.BadImagePatches => "an image's patches do not fit the vision tower",
         error.QwenServedWithoutVision => "image inputs need the server started with --vision",
         error.OutOfMemory => "the GPU had no memory left for this request's caches: retry once another request ends",
+        error.ScratchGrowFailed => "the GPU could not grow Qwen3.5 forward scratch without disturbing the active buffer: retry with fewer streams or a shorter prompt",
         else => null,
     };
 }
