@@ -213,8 +213,8 @@ test "cuda scratch: lazy allocation, growth, failed growth preserves owners, and
     var d: cuda.Driver = undefined;
     var e = engine(&d);
 
-    // Exercise the routed scratch too: its pointers must be cleared by
-    // the measure pass when a replacement allocation fails.
+    // Exercise routed scratch too: measuring a replacement must not mutate
+    // the live engine's carved pointers, including when allocation fails.
     e.g = .{
         .hidden = 256,
         .intermediate = 512,
