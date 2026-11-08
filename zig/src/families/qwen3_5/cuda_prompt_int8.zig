@@ -37,7 +37,7 @@ pub const State = struct {
         // Allocate first: a failed grow must leave the previous workspace usable.
         const bytes = cuda.w4a8.Kernels.scratch(capacity, k);
         var replacement = cuda.DeviceBuffer.alloc(e.d, bytes) catch {
-            std.log.err("Qwen3.5 CUDA INT8 scratch allocation failed: {d} bytes for {d} rows (current capacity {d})", .{ bytes, capacity, s.capacity });
+            std.log.warn("Qwen3.5 CUDA INT8 scratch allocation failed: {d} bytes for {d} rows (current capacity {d})", .{ bytes, capacity, s.capacity });
             return error.ScratchGrowFailed;
         };
         errdefer replacement.free();
