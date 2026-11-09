@@ -285,9 +285,9 @@ pub const Engine = struct {
         e.startup.add(try profile.withCache(e.gpa, io, e, Cache));
     }
 
-    /// Re-run startup warmup after prompt INT8 is enabled, preparing its workspace and graph shapes before requests.
-    pub fn warmPromptInt8(e: *Engine, io: std.Io) !void {
-        e.startup.add(try profile.withCache(e.gpa, io, e, Cache));
+    /// Reserve prompt INT8 workspace before serving; prompt forwards are not graph-captured.
+    pub fn warmPromptInt8(e: *Engine) !void {
+        try e.int8.ensureRows(e, e.scratch_rows);
     }
 
     /// Every path a request takes, run once now: WDDM stalls a process's first forwards for seconds (a 20 s launch).
@@ -365,14 +365,6 @@ pub const Engine = struct {
         return scratch_memory.scratch(e, rows, mode);
     }
 
-    pub fn unallocatedScratchBytes(e: *const Engine) !usize {
-        return scratch_memory.unallocatedScratchBytes(e);
-    }
-
-    pub fn unallocatedScratchBytesFor(e: *const Engine, int8_on: bool) !usize {
-        return scratch_memory.unallocatedScratchBytesFor(e, int8_on);
-    }
-
     pub fn ensureScratch(e: *Engine, rows: usize) !void {
         return scratch_memory.ensureScratch(e, rows);
     }
@@ -444,8 +436,8 @@ pub const Engine = struct {
     pub fn forward(e: *Engine, parts: []const Part, ids: []const u32, keep: Keep) !void {
         const total = ids.len;
         try e.admit(parts, ids, keep);
-        try e.ensureScratch(total);
-        if (!keep.verifies() and e.int8.on) try e.int8.ensureRows(e, total);
+        try scratch_memory.requireCapacity(e.scratch_capacity, total);
+        if (!keep.verifies() and e.int8.on and total > e.int8.capacity) return error.PromptInt8CapacityExceeded;
         const g = e.g;
         const record = keep.verifies();
         const heads: usize = if (record) total else 1;
