@@ -81,6 +81,11 @@ fn device(d: *cuda.Driver, gb10: bool, wide: bool) q.engine.Engine {
     var e: q.engine.Engine = undefined;
     e.int8 = .{};
     e.graphs = .empty;
+    e.scratch_buf = null;
+    e.scratch_capacity = 0;
+    e.scratch_rows = q.engine.max_rows;
+    e.verify_rows = q.engine.most_verify;
+    e.window_rows = q.engine.most_window;
     e.kit = null;
     e.d = d;
     e.stream = .{ .d = d, .handle = null };
