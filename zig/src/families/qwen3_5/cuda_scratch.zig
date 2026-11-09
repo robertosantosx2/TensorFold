@@ -87,66 +87,26 @@ pub fn growthCapacity(capacity: usize, rows: usize, ceiling: usize) usize {
     return @max(rows, @min(ceiling, max_rows));
 }
 
-fn pendingBytes(capacity: usize, rows: usize, replacement: usize) usize {
-    return if (capacity < rows) replacement else 0;
-}
-
 /// The main scratch also serves verify forwards, independently of the prompt ceiling.
 fn mainGrowthCeiling(prompt_rows: usize, verify_rows: usize) usize {
     return @min(max_rows, @max(prompt_rows, verify_rows));
 }
 
-/// Peak additional bytes when main scratch grows before the optional INT8 workspace.
-fn pendingPeak(main_new: usize, main_old: usize, int8_new: usize) usize {
-    if (main_new == 0) return int8_new;
-    return @max(main_new, (main_new -| main_old) + int8_new);
+/// Refuse a forward that exceeds the scratch capacity committed during startup.
+pub fn requireCapacity(capacity: usize, rows: usize) !void {
+    if (rows == 0 or rows > max_rows) return error.InvalidScratchRows;
+    if (rows > capacity) return error.ScratchCapacityExceeded;
 }
 
-/// Pending scratch bytes, including the replacement allocation needed for safe growth.
-pub fn unallocatedScratchBytes(e: anytype) !usize {
-    return unallocatedScratchBytesFor(e, e.int8.on);
-}
-
-/// Pending scratch bytes for a known prompt INT8 setting, including the replacement peak.
-pub fn unallocatedScratchBytesFor(e: anytype, int8_on: bool) !usize {
-    const prompt_rows = @min(e.scratch_rows, max_rows);
-    const main_rows = mainGrowthCeiling(prompt_rows, e.verify_rows);
-    // Reserve verify rows for main scratch, but only prompt rows for the optional INT8 workspace.
-    const main_capacity = growthCapacity(e.scratch_capacity, main_rows, main_rows);
-    var measured = e.*;
-    const full = try scratch(&measured, main_capacity, .measure);
-    const main_new = pendingBytes(e.scratch_capacity, main_capacity, full);
-    var main_old: usize = 0;
-    if (main_new > 0 and e.scratch_capacity > 0) {
-        var old_measure = e.*;
-        main_old = try scratch(&old_measure, e.scratch_capacity, .measure);
-    }
-    const int8_capacity = growthCapacity(e.int8.capacity, prompt_rows, prompt_rows);
-    const int8_new = if (int8_on and e.int8.capacity < int8_capacity) blk: {
-        const g = e.g;
-        const k = @max(g.intermediate, g.valueWidth(), g.attnWidth(), g.hidden);
-        break :blk cuda.w4a8.Kernels.scratch(int8_capacity, k);
-    } else 0;
-    return pendingPeak(main_new, main_old, int8_new);
-}
-
-test "scratch admission reserves a replacement only while startup capacity remains unallocated" {
-    const mib: usize = 1 << 20;
-    const at_32 = 195 * mib;
-    const at_512 = 268 * mib;
-    try std.testing.expectEqual(at_512, pendingBytes(32, 512, at_512));
-    try std.testing.expectEqual(@as(usize, 0), pendingBytes(512, 512, at_512));
-    try std.testing.expectEqual(@as(usize, 0), pendingBytes(512, 256, at_32));
-    try std.testing.expectEqual(at_512, pendingPeak(at_512, at_32, 5 * mib));
-    try std.testing.expectEqual(at_512 + 5 * mib, pendingPeak(at_512, 0, 5 * mib));
-    try std.testing.expectEqual(5 * mib, pendingPeak(0, 0, 5 * mib));
-    try std.testing.expectEqual(@as(usize, 512), growthCapacity(32, 40, 512));
+test "scratch startup capacity refuses rows beyond its reserved ceiling" {
+    try requireCapacity(128, 128);
+    try std.testing.expectError(error.ScratchCapacityExceeded, requireCapacity(128, 129));
+    try std.testing.expectError(error.InvalidScratchRows, requireCapacity(128, 0));
     try std.testing.expectEqual(@as(usize, 128), mainGrowthCeiling(64, 128));
     try std.testing.expectEqual(@as(usize, 256), mainGrowthCeiling(256, 128));
     try std.testing.expectEqual(@as(usize, 40), growthCapacity(0, 40, 512));
+    try std.testing.expectEqual(@as(usize, 512), growthCapacity(32, 40, 512));
     try std.testing.expectEqual(@as(usize, 64), growthCapacity(32, 40, 64));
-    try std.testing.expectEqual(@as(usize, 512), growthCapacity(256, 300, 512));
-    try std.testing.expectEqual(@as(usize, 512), growthCapacity(512, 300, 512));
 }
 
 /// Grow scratch without sacrificing the previous allocation on failure.
