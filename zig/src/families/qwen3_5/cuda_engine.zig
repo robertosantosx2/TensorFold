@@ -295,7 +295,6 @@ pub const Engine = struct {
         // Commit the configured prompt and verify ceiling before admission; warmup then reuses it.
         try e.ensureScratch(@max(e.scratch_rows, e.verify_rows));
         if (e.int8.on) try e.int8.ensureRows(e, e.scratch_rows);
-        const warm_rows = @min(32, e.scratch_rows);
         const ids: [32]u32 = @splat(0);
         const greedy: Draw = .{ .rule = null, .position = 33 };
         try e.forward(&.{.{ .cache = warm_cache, .rows = ids.len }}, &ids, .last); // a prompt chunk: the prompt GEMMs
