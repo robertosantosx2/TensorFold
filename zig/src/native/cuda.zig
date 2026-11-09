@@ -152,21 +152,6 @@ pub const Host = struct {
 const refusals = @import("cuda_refusal.zig");
 const record = @import("cuda_record.zig");
 
-fn admissionModelBytes(actual_model: u64, unallocated_scratch: usize) u64 {
-    return actual_model + @as(u64, @intCast(unallocated_scratch));
-}
-
-test "CUDA admission includes pending family scratch in model cost" {
-    try std.testing.expectEqual(@as(u64, 1234), admissionModelBytes(1000, 234));
-    try std.testing.expectEqual(@as(u64, 1000), admissionModelBytes(1000, 0));
-}
-
-test "CUDA production admission wires loaded scratch into model cost and pending room" {
-    const source = @embedFile("cuda.zig");
-    try std.testing.expect(std.mem.indexOf(u8, source, "loaded.scratch_bytes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, source, "const model = admissionModelBytes(actual_model, unallocated_scratch);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, source, "after.roomAfterPending(actual_model, @intCast(unallocated_scratch))") != null);
-}
 /// The engine for `o.dir`, or null with `problem` set when `refusal` names a flag or no CUDA family reads it.
 pub fn open(a: Allocator, gpa: Allocator, io: std.Io, o: api.Open, problem: *[]const u8) !?api.Opened {
     const report = platform.optional_libraries.atBoundary();
@@ -352,12 +337,11 @@ fn openWith(comptime F: type, a: Allocator, gpa: Allocator, io: std.Io, o: api.O
     var served = try drafted.wrap(F, a, gpa, io, loaded, o, problem) orelse return null;
     defer if (!opened) served.close(gpa);
     const L = @TypeOf(loaded);
-    const unallocated_scratch: usize = if (@hasField(L, "scratch_bytes")) loaded.scratch_bytes else 0;
     const actual_model = cuda.usage(false).device - held0;
-    const model = admissionModelBytes(actual_model, unallocated_scratch);
+    const model = actual_model;
     const after = try pool(a, io, &g.ctx, problem) orelse return null;
     family_memory.noteParked(after, "the CUDA memory budget");
-    const room_after_scratch = after.roomAfterPending(actual_model, @intCast(unallocated_scratch));
+    const room_after_scratch = after.room(actual_model);
     const learn_bytes: usize = if (@hasField(L, "learn_bytes")) loaded.learn_bytes else 0;
     const host_cache = try kv_pages.placeHost(F, a, loaded, o, room_after_scratch, @intCast(window), served.stream_bytes, problem) orelse return null;
     const host_budget = if (host_cache and @hasDecl(F, "snap_save")) budget.hostCacheBytes(a, io, o.prompt_cache_gib) else 0;
