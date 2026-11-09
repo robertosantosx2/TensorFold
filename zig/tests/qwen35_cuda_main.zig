@@ -418,6 +418,7 @@ fn kl(init: std.process.Init, a: std.mem.Allocator, model: []const u8, ids_path:
     if (int8) try eb.int8.enable(eb);
     eb.int8.on = false;
     try fill(eb, &cb, ids.items[0..skip], skip);
+    if (int8) try e8.int8.ensureRows(e8, E.max_rows);
     e8.int8.on = int8;
     try fill(e8, &c8, ids.items[0..skip], skip);
     e8.int8.on = false;
