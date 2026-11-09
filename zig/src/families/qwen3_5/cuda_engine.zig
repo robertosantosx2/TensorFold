@@ -98,10 +98,10 @@ pub const Engine = struct {
     moe: cuda.moe.Fns,
     fns: Fns,
     keeps: Keeps,
-    /// Persistent weights only. Scratch has an independent, growable allocation.
+    /// Persistent model weights; forward scratch has a separate device allocation.
     arena: DeviceBuffer,
     arena_at: usize = 0,
-    /// Forward scratch, sized for the largest row count used so far.
+    /// Forward scratch reserved for the configured prompt and verify ceiling before serving.
     scratch_buf: ?DeviceBuffer = null,
     scratch_capacity: usize = 0,
     /// Maximum prompt rows admitted by the configured context (capped by the forward kernel limit).
