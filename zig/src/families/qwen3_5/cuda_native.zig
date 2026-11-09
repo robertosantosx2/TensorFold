@@ -81,8 +81,6 @@ pub const Loaded = struct {
     rows: u32,
     /// Device bytes each admitted stream allocates (recurrences, convolution tails, keys and values).
     stream_bytes: usize,
-    /// Forward and optional INT8 scratch not physically allocated yet; included in server admission.
-    scratch_bytes: usize = 0,
     free_streams: u32 = 0,
     ctx: *anyopaque,
     deinit: *const fn (*anyopaque) void,
@@ -191,7 +189,7 @@ pub fn openLanes(gpa: std.mem.Allocator, io: std.Io, ctx: *const cuda.Context, d
     }
     if (o.prompt_int8) {
         try e.int8.enable(e); // --prompt-precision int8: prompt projections quantize their inputs
-        try e.warmPromptInt8(io); // allocate/warm the optional INT8 workspace before admission
+        try e.warmPromptInt8(); // allocate the optional INT8 workspace before admission
     }
     if (e.g.vocab != c.vocab) return error.UnsupportedQwenVocab; // draw.zig's masks are sized by the 2B's vocabulary
     if (o.slide) _ = try @import("cuda_learn_shape.zig").from(e.g);
@@ -211,7 +209,6 @@ pub fn openLanes(gpa: std.mem.Allocator, io: std.Io, ctx: *const cuda.Context, d
         .facts = modelFacts(@intCast(e.window_rows), @intCast(e.verify_rows), e.g),
         .rows = @intCast(e.window_rows),
         .stream_bytes = try cacheBytes(e, o.context, page_test),
-        .scratch_bytes = try e.unallocatedScratchBytes(),
         .ctx = l,
         .deinit = release,
         .reserve = reserve,
