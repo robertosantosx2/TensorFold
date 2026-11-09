@@ -25,7 +25,7 @@ pub const State = struct {
         s.on = true;
     }
 
-    /// Grow the prompt workspace only when a prompt projection needs more rows.
+    /// Reserve prompt workspace before a forward starts; projection kernels never grow it.
     pub fn ensureRows(s: *State, e: anytype, rows: usize) !void {
         if (rows == 0 or rows > max_rows) return error.InvalidPromptRows;
         if (rows <= s.capacity) return;
