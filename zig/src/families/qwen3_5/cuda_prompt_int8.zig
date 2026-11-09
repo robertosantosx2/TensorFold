@@ -43,10 +43,7 @@ pub const State = struct {
         errdefer replacement.free();
 
         try e.stream.synchronize();
-        var it = e.graphs.valueIterator();
-        while (it.next()) |graph| graph.deinit();
-        e.graphs.clearRetainingCapacity();
-
+        // Prompt forwards are uncaptured, so this workspace is not referenced by decode graphs.
         const previous = s.buf;
         s.buf = replacement;
         s.ws = replacement.ptr;
