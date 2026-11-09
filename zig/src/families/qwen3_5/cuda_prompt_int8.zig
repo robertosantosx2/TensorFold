@@ -18,7 +18,7 @@ pub const State = struct {
         s.kernels = try cuda.w4a8.Kernels.resolve(m);
     }
 
-    /// Enable prompt INT8; allocate its row workspace lazily on first use.
+    /// Enable prompt INT8; reserve its row workspace during the next startup warmup.
     pub fn enable(s: *State, e: anytype) !void {
         if (s.flag == null)
             s.flag = try cuda.DeviceBuffer.alloc(e.d, 4);
