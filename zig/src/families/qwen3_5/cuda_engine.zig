@@ -30,7 +30,7 @@ pub const max_segs = Round.max_segs;
 /// Rows of a verify forward at most: each row's logits are kept and drawn.
 pub const most_verify = Round.most_verify;
 pub const argmaxSlices = scratch_memory.argmaxSlices;
-pub const most_window = Round.most_window; // qwen35.cuh's MAXW, the rows a stream's log holds
+pub const most_window = Round.most_window; // Maximum rows a stream's log holds
 pub const aligned = scratch_memory.aligned; // Device allocations are 256-byte aligned
 
 /// qwen35.cuh's Geo.
