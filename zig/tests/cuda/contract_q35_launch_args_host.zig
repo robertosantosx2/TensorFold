@@ -412,6 +412,8 @@ test "Qwen3.5 prompt tiles predicate padded rows against the actual forward tota
     try std.testing.expect(std.mem.indexOf(u8, qwen, "if (past_rows(P, blockIdx.x)) return;") != null);
     try std.testing.expect(std.mem.indexOf(u8, qwen, "if (past_rows(P, w)) return;") != null);
     try std.testing.expect(std.mem.indexOf(u8, qwen, "if (past_rows(P, blockIdx.z)) return;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, qwen, "if (past_rows(P, blockIdx.x / heads)) return;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, qwen, "if (past_rows(P, blockIdx.y)) return;") != null);
 
     // W4A8 rounds its row tiles up, but masks loads and stores against M; padded rows never write out.
     try std.testing.expect(std.mem.indexOf(u8, int8, "m0 + r < M") != null);
