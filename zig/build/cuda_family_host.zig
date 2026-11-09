@@ -9,8 +9,8 @@ pub fn steps(b: *std.Build, cuda: *std.Build.Module, mods: anytype, step: *std.B
     const memory_step = b.step("test-cuda-memory-admission-host", "CUDA memory admission arithmetic without devices");
     memory_step.dependOn(&memory_run.step);
     step.dependOn(&memory_run.step);
-    const scratch_run = b.addRunArtifact(b.addTest(.{ .root_module = mods.qwen35, .filters = &.{"lazy scratch admission"} }));
-    const scratch_step = b.step("test-qwen35-scratch-host", "Qwen3.5 lazy scratch sizing and growth admission without devices");
+    const scratch_run = b.addRunArtifact(b.addTest(.{ .root_module = mods.qwen35, .filters = &.{"scratch"} }));
+    const scratch_step = b.step("test-qwen35-scratch-host", "Qwen3.5 scratch sizing and startup-capacity refusal without devices");
     scratch_step.dependOn(&scratch_run.step);
     step.dependOn(&scratch_run.step);
     const metal_scope = b.addRunArtifact(b.addTest(.{ .root_module = b.createModule(.{ .root_source_file = b.path("zig/src/families/qwen3_5/config.zig"), .target = host }), .filters = &.{ "Metal 2B format scope:", "admit the affine 2B", "admit untied heads" } }));
