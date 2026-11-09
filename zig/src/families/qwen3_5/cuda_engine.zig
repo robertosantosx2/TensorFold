@@ -29,17 +29,9 @@ pub const max_rows = Round.max_rows;
 pub const max_segs = Round.max_segs;
 /// Rows of a verify forward at most: each row's logits are kept and drawn.
 pub const most_verify = Round.most_verify;
-/// tf_q35_argmax_slices' blocks a row (ARGMAX_SLICE entries each).
-pub fn argmaxSlices(vocab: usize) usize {
-    return (vocab + 4095) / 4096;
-}
-/// A window's rows at most (exact: one-row steps' bits; qwen35.cuh's MAXW, the rows a stream's log holds).
-pub const most_window = Round.most_window;
-
-/// Device allocations are 256-byte aligned, as the driver's are.
-pub fn aligned(n: usize) usize {
-    return std.mem.alignForward(usize, n, 256);
-}
+pub const argmaxSlices = scratch_memory.argmaxSlices;
+pub const most_window = Round.most_window; // qwen35.cuh's MAXW, the rows a stream's log holds
+pub const aligned = scratch_memory.aligned; // Device allocations are 256-byte aligned
 
 /// qwen35.cuh's Geo.
 pub const Geo = extern struct { hid: c_int, nk: c_int, nv: c_int, qh: c_int, kvh: c_int, nl: c_int };
@@ -300,10 +292,10 @@ pub const Engine = struct {
 
     /// Every path a request takes, run once now: WDDM stalls a process's first forwards for seconds (a 20 s launch).
     pub fn warmCache(e: *Engine, warm_cache: *Cache) !void {
-        // Warm 32 startup rows; reserve the configured context ceiling for later growth.
+        // Commit the configured prompt and verify ceiling before admission; warmup then reuses it.
+        try e.ensureScratch(@max(e.scratch_rows, e.verify_rows));
+        if (e.int8.on) try e.int8.ensureRows(e, e.scratch_rows);
         const warm_rows = @min(32, e.scratch_rows);
-        try e.ensureScratch(warm_rows);
-        if (e.int8.on) try e.int8.ensureRows(e, warm_rows);
         const ids: [32]u32 = @splat(0);
         const greedy: Draw = .{ .rule = null, .position = 33 };
         try e.forward(&.{.{ .cache = warm_cache, .rows = ids.len }}, &ids, .last); // a prompt chunk: the prompt GEMMs
@@ -454,6 +446,7 @@ pub const Engine = struct {
         const total = ids.len;
         try e.admit(parts, ids, keep);
         try e.ensureScratch(total);
+        if (!keep.verifies() and e.int8.on) try e.int8.ensureRows(e, total);
         const g = e.g;
         const record = keep.verifies();
         const heads: usize = if (record) total else 1;
