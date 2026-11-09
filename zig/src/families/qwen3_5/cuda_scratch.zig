@@ -1,4 +1,4 @@
-//! Qwen3.5 CUDA forward scratch sizing, ownership and growth.
+//! Qwen3.5 CUDA forward scratch sizing and ownership.
 const std = @import("std");
 const cuda = @import("cuda");
 const geometry = @import("cuda_geometry.zig");
@@ -80,7 +80,7 @@ pub fn scratch(e: anytype, rows: usize, mode: Mode) !usize {
     return t.total;
 }
 
-/// If a caller exceeds its startup reservation, grow once to the admitted ceiling.
+/// Choose a reservation large enough for the requested rows, bounded by the configured ceiling.
 pub fn growthCapacity(capacity: usize, rows: usize, ceiling: usize) usize {
     if (capacity >= rows) return capacity;
     if (capacity == 0) return rows;
@@ -109,7 +109,7 @@ test "scratch startup capacity refuses rows beyond its reserved ceiling" {
     try std.testing.expectEqual(@as(usize, 64), growthCapacity(32, 40, 64));
 }
 
-/// Grow scratch without sacrificing the previous allocation on failure.
+/// Ensure scratch is allocated during startup, before any request forward uses it.
 pub fn ensureScratch(e: anytype, rows: usize) !void {
     if (rows == 0 or rows > max_rows) return error.InvalidScratchRows;
     if (rows <= e.scratch_capacity) return;
@@ -117,7 +117,7 @@ pub fn ensureScratch(e: anytype, rows: usize) !void {
     var measured = e.*;
     const bytes = try scratch(&measured, capacity, .measure);
     var replacement = DeviceBuffer.alloc(e.d, bytes) catch {
-        std.log.err("Qwen3.5 CUDA scratch allocation failed: {d} bytes for {d} rows", .{ bytes, capacity });
+        std.log.err("Qwen3.5 CUDA scratch startup allocation failed: {d} bytes for {d} rows", .{ bytes, capacity });
         return error.ScratchGrowFailed;
     };
     e.stream.synchronize() catch |err| {
