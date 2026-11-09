@@ -160,6 +160,13 @@ test "CUDA admission includes pending family scratch in model cost" {
     try std.testing.expectEqual(@as(u64, 1234), admissionModelBytes(1000, 234));
     try std.testing.expectEqual(@as(u64, 1000), admissionModelBytes(1000, 0));
 }
+
+test "CUDA production admission wires loaded scratch into model cost and pending room" {
+    const source = @embedFile("cuda.zig");
+    try std.testing.expect(std.mem.indexOf(u8, source, "loaded.scratch_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "const model = admissionModelBytes(actual_model, unallocated_scratch);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "after.roomAfterPending(actual_model, @intCast(unallocated_scratch))") != null);
+}
 /// The engine for `o.dir`, or null with `problem` set when `refusal` names a flag or no CUDA family reads it.
 pub fn open(a: Allocator, gpa: Allocator, io: std.Io, o: api.Open, problem: *[]const u8) !?api.Opened {
     const report = platform.optional_libraries.atBoundary();
