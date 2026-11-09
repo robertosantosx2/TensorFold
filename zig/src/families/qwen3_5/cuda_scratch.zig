@@ -12,11 +12,11 @@ const max_chunks = 64;
 
 pub const Mode = enum { measure, allocate };
 
-fn aligned(n: usize) usize {
+pub fn aligned(n: usize) usize {
     return std.mem.alignForward(usize, n, 256);
 }
 
-fn argmaxSlices(vocab: usize) usize {
+pub fn argmaxSlices(vocab: usize) usize {
     return (vocab + 4095) / 4096;
 }
 
