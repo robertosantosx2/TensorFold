@@ -6,8 +6,6 @@ pub fn steps(b: *std.Build, cuda: *std.Build.Module, mods: anytype, step: *std.B
     @import("prefill_widths_cuda.zig").tests(b, cuda, mods, step);
     const memory = b.createModule(.{ .root_source_file = b.path("zig/src/native/cuda_memory.zig"), .target = host, .optimize = .debug, .link_libc = true, .imports = &.{.{ .name = "cuda", .module = cuda }} });
     const memory_run = b.addRunArtifact(b.addTest(.{ .root_module = memory }));
-    const memory_step = b.step("test-cuda-memory-admission-host", "CUDA memory admission arithmetic without devices");
-    memory_step.dependOn(&memory_run.step);
     step.dependOn(&memory_run.step);
     const scratch_run = b.addRunArtifact(b.addTest(.{ .root_module = mods.qwen35, .filters = &.{"scratch"} }));
     const scratch_step = b.step("test-qwen35-scratch-host", "Qwen3.5 scratch sizing and startup-capacity refusal without devices");
