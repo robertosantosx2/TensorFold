@@ -36,7 +36,17 @@ fn measure(e: anytype, io: std.Io, ctx: *const cuda.Context, ck: anytype, fit: ?
     const unified = (try ctx.attribute(.integrated)) != 0;
     const stream = e.streamBytes(f.context);
     const beside = if (f.drafter) |dir| try drafter(e, io, dir) else 0;
-    const pending = try @import("cuda_scratch.zig").unallocatedScratchBytesFor(e, f.prompt_int8);
+    // EXL3's host-embedding decision must count the scratch that startup will commit before admission.
+    const scratch = @import("cuda_scratch.zig");
+    const prompt_rows = @min(e.scratch_rows, @import("cuda_round.zig").max_rows);
+    const main_rows = @min(@import("cuda_round.zig").max_rows, @max(prompt_rows, e.verify_rows));
+    var measured = e.*;
+    const main_pending = try scratch.scratch(&measured, main_rows, .measure);
+    const int8_pending = if (f.prompt_int8) blk: {
+        const k = @max(e.g.intermediate, e.g.valueWidth(), e.g.attnWidth(), e.g.hidden);
+        break :blk cuda.w4a8.Kernels.scratch(prompt_rows, k);
+    } else 0;
+    const pending = main_pending + int8_pending;
     if (!mapped(unified, f.room, bytes + pending + others, stream, beside)) return bytes;
     e.host_embed = try cuda.HostBuffer.allocMapped(e.d, e.g.vocab * e.g.hidden * 2);
     std.log.info("qwen3_5: embedding rows read from host memory: no room beside a {d}-token stream", .{f.context});
