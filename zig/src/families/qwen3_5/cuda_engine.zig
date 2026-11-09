@@ -208,7 +208,7 @@ pub const Engine = struct {
         e.arena_at = 0;
         e.scratch_buf = null;
         e.scratch_capacity = 0;
-        // Reserve the configured prompt ceiling; startup warmup also uses its 32-row path.
+        // Reserve the configured ceiling before running the 32-row warm-up forwards.
         e.scratch_rows = @max(32, @min(max_rows, prompt_rows_limit));
         errdefer if (e.scratch_buf) |*b| b.free();
         e.graphs = .empty;
