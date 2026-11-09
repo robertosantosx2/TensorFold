@@ -130,7 +130,7 @@ pub fn unallocatedScratchBytesFor(e: anytype, int8_on: bool) !usize {
     return pendingPeak(main_new, main_old, int8_new);
 }
 
-test "lazy scratch admission reserves a full replacement only while growth remains possible" {
+test "scratch admission reserves a replacement only while startup capacity remains unallocated" {
     const mib: usize = 1 << 20;
     const at_32 = 195 * mib;
     const at_512 = 268 * mib;
