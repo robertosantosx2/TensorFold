@@ -71,7 +71,7 @@ pub const State = struct {
 
 /// A prompt chunk's affine 4-bit projection (every prompt row) with int8 activations; false when it is exceptional.
 pub fn project(e: anytype, x: u64, q: cuda.qlinear.Affine4, out: u64, rows: usize) !bool {
-    try e.int8.ensureRows(e, rows);
+    // forward() prepares the full prompt workspace before any layer launches.
     var exceptional: u32 = 0;
     try e.int8.kernels.prompt(e.stream, x, q, out, rows, e.int8.ws, e.int8.flag.?.ptr, &exceptional);
     return exceptional == 0;
