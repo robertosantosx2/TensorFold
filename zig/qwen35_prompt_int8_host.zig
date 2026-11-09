@@ -135,7 +135,7 @@ test "prompt int8: enable allocates once, failure retains no owner, and deinit i
     try T.expectEqual(cuda.w4a8.Kernels.scratch(65, 512), e.int8.buf.?.len);
     try T.expectEqual(@as(usize, 5), Trace.allocations);
     try T.expectEqual(@as(usize, 1), Trace.frees);
-    try e.int8.ensureRows(&e, 66);
+    try e.int8.ensureRows(&e, 65);
     try T.expectEqual(@as(usize, 5), Trace.allocations);
 
     e.int8.deinit();
