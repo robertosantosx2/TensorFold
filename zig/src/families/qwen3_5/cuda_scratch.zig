@@ -80,7 +80,7 @@ pub fn scratch(e: anytype, rows: usize, mode: Mode) !usize {
     return t.total;
 }
 
-/// After the 32-row warm-up, grow once to the admitted ceiling, not through geometric steps.
+/// If a caller exceeds its startup reservation, grow once to the admitted ceiling.
 pub fn growthCapacity(capacity: usize, rows: usize, ceiling: usize) usize {
     if (capacity >= rows) return capacity;
     if (capacity == 0) return rows;
