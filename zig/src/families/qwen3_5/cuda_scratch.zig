@@ -1,4 +1,4 @@
-//! The engine's scratch rows from its arena: the two mixers' rows and the dense MLP's share one region.
+//! The engine's separate CUDA scratch allocation: mixer and dense MLP rows share one region.
 const std = @import("std");
 const cuda = @import("cuda");
 const geometry = @import("cuda_geometry.zig");
