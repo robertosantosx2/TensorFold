@@ -7,6 +7,7 @@ pub fn steps(b: *std.Build) void {
             wire(b, "test-host-ci-linux-fast", "Nightly host checks without a GPU or shader compiler", &linux_fast);
             wire(b, "test-host-ci-linux-host", "Nightly host checks without a GPU or shader compiler", &linux_host);
             wire(b, "test-host-ci-linux-compile", "Nightly host checks without a GPU or shader compiler", &linux_compile);
+            wire(b, "test-host-ci-linux-deepseek", "Nightly host checks without a GPU or shader compiler", &linux_deepseek);
             if (b.top_level_steps.contains("hip-host-test"))
                 wire(b, "test-host-ci-linux-hip", "Nightly HIP host checks and checker builds, no device execution", &linux_hip);
         },
@@ -15,8 +16,7 @@ pub fn steps(b: *std.Build) void {
             wire(b, "test-host-ci-macos-adapters", "Nightly host checks without a GPU or shader compiler", &macos_adapters);
             wire(b, "test-host-ci-macos-deepseek", "Nightly host checks without a GPU or shader compiler", &macos_deepseek);
             wire(b, "test-host-ci-macos-lanes", "Nightly host checks without a GPU or shader compiler", &macos_lanes);
-            // No workflow calls this list until the fixture fixes have landed.
-            wire(b, "test-host-ci-macos-deferred", "Deferred host regressions; enable nightly after their fixes land", &macos_deferred);
+            wire(b, "test-host-ci-macos-deferred", "Nightly host checks without a GPU or shader compiler", &macos_deferred);
         },
         else => {},
     }
@@ -63,6 +63,12 @@ const linux_compile = [_][]const u8{
     "compile-recurrent-bookkeeping-host",
     "compile-release-paths-host",
     "dsv41-prefill-heads",
+};
+
+const linux_deepseek = [_][]const u8{
+    "test-dsv41-device-host",
+    "test-dsv41-forward",
+    "test-sessions-writes-host",
 };
 
 const linux_fast = [_][]const u8{
@@ -117,6 +123,7 @@ const linux_hip = [_][]const u8{
 
 const linux_host = [_][]const u8{
     "test-bolt-load-host",
+    "test-cache-fit-host",
     "test-checkpoint-io-fast",
     "test-checkpoint-io-host",
     "test-cli-memory-host",
@@ -184,6 +191,7 @@ const linux_host = [_][]const u8{
     "test-nemotron-copies-host",
     "test-omni-slide-host",
     "test-omni-video-host",
+    "test-pdf-worker",
     "test-picture-host",
     "test-pocket-device-host",
     "test-prefill-service-host",
@@ -280,6 +288,7 @@ const macos_deepseek = [_][]const u8{
     "test-dsv41-device-host",
     "test-dsv41-draft",
     "test-dsv41-forward",
+    "test-sessions-writes-host",
 };
 
 const macos_fast = [_][]const u8{

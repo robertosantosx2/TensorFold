@@ -151,11 +151,27 @@ fn fits(comptime F: type, loaded: anytype, o: api.Open, room: u64, window: u64, 
     return room -| stream_bytes * (n -| loaded.free_streams) >= want;
 }
 
+/// Plan streams first, then half their remaining room with a 16 GiB floor, unless the cache was explicit.
+pub fn budgetOf(comptime F: type, l: kv_pool.Layout, room: u64, o: api.Open, window: u64, host_mode: bool, engine_paged: bool, kept_ppm: u32, slots: ?usize) kv_pool.Budget {
+    const rows: u64 = if (comptime @hasDecl(F, "window_rows")) F.window_rows else 0;
+    const want = if (host_mode) 0 else budget.cacheBytes(o.prompt_cache_gib, std.math.maxInt(u64), 0);
+    var out: kv_pool.Budget = .{ .room = room, .engine = 0, .lanes = o.lanes, .fixed = o.lanes_fixed, .cache = want, .snaps = slots orelse named(o), .window = window + rows, .engine_paged = engine_paged, .kept_ppm = if (host_mode) 0 else kept_ppm, .slots_only = slots != null, .asked = o.prompt_cache_gib != null };
+    if (out.asked or host_mode) return out;
+    var probe = out;
+    probe.cache = std.math.maxInt(u64);
+    const all = kv_pool.plan(l, probe) catch return out;
+    const left = if (!engine_paged and out.window > 0)
+        room -| (@as(u64, all.lanes - 1) *| (l.fixed_bytes +| (l.pages(out.window) + l.runPages()) *| l.pageBytes()))
+    else
+        all.snaps * l.snap_bytes + all.copied + all.kept;
+    out.cache = budget.cacheBytes(null, left, 0);
+    return out;
+}
+
 /// The pool beside the engine's own sequence (in `model`: a window, or on pages its fixed part); null: see `problem`.
 pub fn plan(comptime F: type, a: Allocator, l: kv_pool.Layout, room: u64, o: api.Open, window: u64, problem: *[]const u8, host_mode: bool, engine_paged: bool, kept_ppm: u32, slots: ?usize) !?Plan {
     const rows: u64 = if (comptime @hasDecl(F, "window_rows")) F.window_rows else 0;
-    const want = if (host_mode) 0 else budget.cacheBytes(o.prompt_cache_gib, std.math.maxInt(u64), 0);
-    return kv_pool.plan(l, .{ .room = room, .engine = 0, .lanes = o.lanes, .fixed = o.lanes_fixed, .cache = want, .snaps = slots orelse named(o), .window = window + rows, .engine_paged = engine_paged, .kept_ppm = if (host_mode) 0 else kept_ppm, .slots_only = slots != null, .asked = o.prompt_cache_gib != null }) catch |e| {
+    return kv_pool.plan(l, budgetOf(F, l, room, o, window, host_mode, engine_paged, kept_ppm, slots)) catch |e| {
         problem.* = switch (e) {
             error.NoStream => if (engine_paged) try std.fmt.allocPrint(a, "the CUDA memory budget fits no stream beside the model: one at a {d}-token window takes {d:.2} GiB of KV pages, and the budget leaves {d:.2} GiB", .{ window, toGib(l.pages(window + rows) * l.pageBytes()), toGib(room) }) else "the CUDA memory budget fits no stream beside the model",
             error.TooMany => try std.fmt.allocPrint(a, "--parallel {d} needs {d:.2} GiB for its other streams' fixed parts, state runs and a page each, and the CUDA memory budget leaves {d:.2} GiB: serve fewer, or free device memory", .{ o.lanes, toGib((o.lanes - 1) * (l.fixed_bytes + (1 + l.runPages()) * l.pageBytes())), toGib(room) }),
@@ -165,14 +181,14 @@ pub fn plan(comptime F: type, a: Allocator, l: kv_pool.Layout, room: u64, o: api
 }
 
 /// The planned streams' sequences and pages made now; false: `problem` says why they could not be.
-pub fn attach(comptime F: type, a: Allocator, ctx: *anyopaque, paged: ?Plan, problem: *[]const u8) !bool {
+pub fn attach(comptime F: type, a: Allocator, ctx: *anyopaque, paged: ?Plan, planned: ?kv_pool.Budget, problem: *[]const u8) !bool {
     if (comptime !@hasDecl(F, "attach")) return true;
     const p = paged orelse return true;
     F.attach(ctx, p.lanes - 1, p.pages) catch |e| {
         problem.* = try std.fmt.allocPrint(a, "the CUDA engine could not make its {d} streams' pages ({s})", .{ p.lanes - 1, @errorName(e) });
         return false;
     };
-    if (comptime @hasDecl(F, "share_states")) F.share_states(ctx, p.snaps, p.lanes) catch |e| {
+    if (comptime @hasDecl(F, "share_states")) F.share_states(ctx, p.snaps, p.lanes, planned) catch |e| {
         problem.* = try std.fmt.allocPrint(a, "the CUDA engine could not ready its kept states ({s})", .{@errorName(e)});
         return false;
     };
@@ -235,13 +251,15 @@ pub fn text(comptime F: type, a: Allocator, stream_bytes: u64, l: ?kv_pool.Layou
 }
 
 /// The startup line's cache: the `asked` TF_KV_SHARE slots (GLM), those that fit, or over the pool's pages, or `cache`.
-pub fn cacheText(a: Allocator, over_pages: bool, asked: ?usize, paged: ?Plan, l: ?kv_pool.Layout, cache: []const u8) ![]const u8 {
+pub fn cacheText(a: Allocator, over_pages: bool, asked: ?usize, paged: ?Plan, l: ?kv_pool.Layout, planned: ?kv_pool.Budget, cache: []const u8) ![]const u8 {
     const n = asked orelse return if (over_pages) ", the prompt cache over the pool's pages" else cache;
     const snaps = paged.?.snaps;
     const slot = l.?.snap_bytes;
-    if (snaps == 0) return std.fmt.allocPrint(a, ", no prompt cache (none of TF_KV_SHARE={d} kept states' slots fit; --prompt-cache-gib {d} holds all {d})", .{ n, kv_pool.holdingGib(n, slot), n });
-    if (snaps < n) return std.fmt.allocPrint(a, ", {d} of TF_KV_SHARE={d} kept states' slots ({d:.1} GiB; --prompt-cache-gib {d} holds all {d}) and the prompt cache over the pool's pages", .{ snaps, n, toGib(snaps * slot), kv_pool.holdingGib(n, slot), n });
-    return std.fmt.allocPrint(a, ", {d} kept states' slots ({d:.1} GiB) and the prompt cache over the pool's pages", .{ snaps, toGib(snaps * slot) });
+    if (snaps > 0 and snaps >= n) return std.fmt.allocPrint(a, ", {d} kept states' slots ({d:.1} GiB) and the prompt cache over the pool's pages", .{ snaps, toGib(snaps * slot) });
+    const h = kv_pool.holding(l.?, planned.?, n); // a --prompt-cache-gib named only where asking it keeps all n
+    const more = if (h.gib) |gib| try std.fmt.allocPrint(a, "--prompt-cache-gib {d} holds all {d}", .{ gib, n }) else try std.fmt.allocPrint(a, "the room holds {d} at any --prompt-cache-gib", .{h.most});
+    if (snaps == 0) return std.fmt.allocPrint(a, ", no prompt cache (none of TF_KV_SHARE={d} kept states' slots fit; {s})", .{ n, more });
+    return std.fmt.allocPrint(a, ", {d} of TF_KV_SHARE={d} kept states' slots ({d:.1} GiB; {s}) and the prompt cache over the pool's pages", .{ snaps, n, toGib(snaps * slot), more });
 }
 
 fn named(o: api.Open) ?usize {
@@ -277,14 +295,24 @@ test "the startup line names TF_KV_SHARE's slots, and when the cache holds fewer
     const a = arena.allocator();
     const l: kv_pool.Layout = .{ .fixed_bytes = 0, .token_bytes = 1, .page_tokens = 64, .snap_bytes = 180 << 20 };
     const p: Plan = .{ .lanes = 2, .snaps = 16, .copied = 0, .pages = 100 };
-    try std.testing.expectEqualStrings(", 16 kept states' slots (2.8 GiB) and the prompt cache over the pool's pages", try cacheText(a, true, 16, p, l, ", own"));
+    const roomy: kv_pool.Budget = .{ .room = 64 << 30, .engine = 0, .lanes = 2, .cache = 16 << 30, .snaps = 16, .slots_only = true };
+    try std.testing.expectEqualStrings(", 16 kept states' slots (2.8 GiB) and the prompt cache over the pool's pages", try cacheText(a, true, 16, p, l, roomy, ", own"));
     var some = p;
     some.snaps = 13; // a 2.4 GiB cache: 13 of the 16 slots, 16 x 180 MiB rounding up to 3 GiB
-    try std.testing.expectEqualStrings(", 13 of TF_KV_SHARE=16 kept states' slots (2.3 GiB; --prompt-cache-gib 3 holds all 16) and the prompt cache over the pool's pages", try cacheText(a, true, 16, some, l, ", own"));
+    try std.testing.expectEqualStrings(", 13 of TF_KV_SHARE=16 kept states' slots (2.3 GiB; --prompt-cache-gib 3 holds all 16) and the prompt cache over the pool's pages", try cacheText(a, true, 16, some, l, roomy, ", own"));
+    var tight = roomy;
+    tight.room = (12 << 30) / 5; // 2.4 GiB: no --prompt-cache-gib keeps more than 13 here, so the line names none
+    try std.testing.expectEqualStrings(", 13 of TF_KV_SHARE=16 kept states' slots (2.3 GiB; the room holds 13 at any --prompt-cache-gib) and the prompt cache over the pool's pages", try cacheText(a, true, 16, some, l, tight, ", own"));
+    var strip = tight;
+    strip.room = 2976 << 20; // the 16 slots fit and 3 GiB doesn't: an asked 3 is clipped to the rest and keeps all 16
+    some.snaps = 15;
+    try std.testing.expectEqualStrings(", 15 of TF_KV_SHARE=16 kept states' slots (2.6 GiB; --prompt-cache-gib 3 holds all 16) and the prompt cache over the pool's pages", try cacheText(a, true, 16, some, l, strip, ", own"));
     some.snaps = 0;
-    try std.testing.expectEqualStrings(", no prompt cache (none of TF_KV_SHARE=16 kept states' slots fit; --prompt-cache-gib 3 holds all 16)", try cacheText(a, true, 16, some, l, ", own"));
-    try std.testing.expectEqualStrings(", the prompt cache over the pool's pages", try cacheText(a, true, null, p, l, ", own"));
-    try std.testing.expectEqualStrings(", own", try cacheText(a, false, null, null, null, ", own"));
+    try std.testing.expectEqualStrings(", no prompt cache (none of TF_KV_SHARE=16 kept states' slots fit; --prompt-cache-gib 3 holds all 16)", try cacheText(a, true, 16, some, l, roomy, ", own"));
+    tight.room = 100 << 20;
+    try std.testing.expectEqualStrings(", no prompt cache (none of TF_KV_SHARE=16 kept states' slots fit; the room holds 0 at any --prompt-cache-gib)", try cacheText(a, true, 16, some, l, tight, ", own"));
+    try std.testing.expectEqualStrings(", the prompt cache over the pool's pages", try cacheText(a, true, null, p, l, null, ", own"));
+    try std.testing.expectEqualStrings(", own", try cacheText(a, false, null, null, null, null, ", own"));
 }
 
 const Fixture = struct {
@@ -449,4 +477,60 @@ test "KV admission: a refusal prices the running states beside the fixed part an
     try std.testing.expectEqual(@as(?Plan, null), try plan(struct {}, arena.allocator(), l, 2 << 30, o, 8, &problem, false, false, 0, null));
     try std.testing.expect(std.mem.indexOf(u8, problem, "needs 3.00 GiB") != null);
     try std.testing.expect(std.mem.indexOf(u8, problem, "state runs") != null);
+}
+
+test "CUDA cache default scales pool copies after full stream windows without cutting lanes" {
+    const GiB: u64 = 1 << 30;
+    const F = struct {};
+    const l: kv_pool.Layout = .{ .fixed_bytes = 0, .token_bytes = 1 << 20, .page_tokens = 1, .snap_bytes = 0 };
+    const o: api.Open = .{ .dir = "model", .model_type = "qwen3_5", .lanes = 8 };
+    const b = budgetOf(F, l, 88 * GiB, o, 6144, false, true, 0, null);
+    const p = try kv_pool.plan(l, b);
+    try std.testing.expectEqual(@as(u32, 8), p.lanes);
+    try std.testing.expectEqual(@as(u64, 20 * GiB), b.cache);
+    try std.testing.expectEqual(@as(u64, 20 * GiB), p.copied);
+    var explicit = o;
+    explicit.prompt_cache_gib = 8;
+    try std.testing.expectEqual(@as(u64, 8 * GiB), budgetOf(F, l, 88 * GiB, explicit, 6144, false, true, 0, null).cache);
+    explicit.prompt_cache_gib = 0;
+    try std.testing.expectEqual(@as(u64, 0), budgetOf(F, l, 88 * GiB, explicit, 6144, false, true, 0, null).cache);
+}
+
+test "CUDA cache default leaves seven full windows beside an unpaged engine" {
+    const GiB: u64 = 1 << 30;
+    const l: kv_pool.Layout = .{ .fixed_bytes = 0, .token_bytes = 1 << 20, .page_tokens = 1, .snap_bytes = 0 };
+    const o: api.Open = .{ .dir = "model", .model_type = "n", .lanes = 8 };
+    const b = budgetOf(struct {}, l, 88 * GiB, o, 8192, false, false, 0, null);
+    const p = try kv_pool.plan(l, b);
+    try std.testing.expectEqual(@as(u32, 8), p.lanes);
+    try std.testing.expectEqual(@as(u64, 16 * GiB), b.cache);
+    try std.testing.expectEqual(@as(usize, 7 * 8192), p.pages);
+    try std.testing.expectEqual(@as(u64, 16 * GiB), p.copied);
+    var explicit = o;
+    explicit.prompt_cache_gib = 40;
+    try std.testing.expectEqual(@as(u64, 40 * GiB), budgetOf(struct {}, l, 88 * GiB, explicit, 8192, false, false, 0, null).cache);
+}
+
+test "CUDA cache default uses half of unpaged room when it exceeds the floor" {
+    const GiB: u64 = 1 << 30;
+    const l: kv_pool.Layout = .{ .fixed_bytes = 0, .token_bytes = 1 << 20, .page_tokens = 1, .snap_bytes = 0 };
+    const o: api.Open = .{ .dir = "model", .model_type = "n", .lanes = 8 };
+    const b = budgetOf(struct {}, l, 104 * GiB, o, 8192, false, false, 0, null);
+    const p = try kv_pool.plan(l, b);
+    try std.testing.expectEqual(@as(u64, 24 * GiB), b.cache);
+    try std.testing.expectEqual(@as(u32, 8), p.lanes);
+    try std.testing.expectEqual(@as(usize, 7 * 8192), p.pages);
+    try std.testing.expectEqual(@as(u64, 24 * GiB), p.copied);
+}
+
+test "CUDA cache default leaves no copies when unpaged windows use all room" {
+    const GiB: u64 = 1 << 30;
+    const l: kv_pool.Layout = .{ .fixed_bytes = 0, .token_bytes = 1 << 20, .page_tokens = 1, .snap_bytes = 0 };
+    const o: api.Open = .{ .dir = "model", .model_type = "n", .lanes = 8 };
+    const b = budgetOf(struct {}, l, 56 * GiB, o, 8192, false, false, 0, null);
+    const p = try kv_pool.plan(l, b);
+    try std.testing.expectEqual(@as(u64, 0), b.cache);
+    try std.testing.expectEqual(@as(u32, 8), p.lanes);
+    try std.testing.expectEqual(@as(usize, 7 * 8192), p.pages);
+    try std.testing.expectEqual(@as(u64, 0), p.copied);
 }

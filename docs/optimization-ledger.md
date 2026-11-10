@@ -59,11 +59,11 @@ last two hold the families with only a Metal, HIP or scoring backend.
 | 12. Add + norm | done H[#2099] | no (bound <1 %) | yes | done¹ | done [#796] |
 | 13. MoE grouped | done [#605] | done [#1351] | done [#864] | no (dense) | done [#558] |
 | 14. CUDA graphs | done¹ | done [#1786] | open [#2279] | done [#1174] | done [#615] |
-| 15. MTP | done [#1562] | done [#1925] | done [#1585] | done [#1385] | done [#997] |
+| 15. MTP | done [#1562] | done [#1925] | done [#1585]; wide C open [#2257] | done [#1385] | done [#997] |
 | 16. DFlash(2) | done [#1465] | yes | done [#979] | done C¹ M[#879] | yes |
 | 17. DSpark | yes | yes | yes | yes | yes |
-| 18. Copy drafts | done [#1477] | done [#468] | done [#2146] | done [#2022] | done [#1974] |
-| 19. Shared drafts | done [#1562] | no (null [#1762]) | done [#1779] | done [#1779] | done [#768] |
+| 18. Copy drafts | done [#1477] | done [#468] | done [#2146]; wide C open [#2257] | done [#2022] | done [#1974] |
+| 19. Shared drafts | done [#1562] | no (null [#1762]) | done [#1779]; cap C open [#2257] | done [#1779] | done [#768] |
 | 20. Solo chunks | yes | done C[#1733] M[#2167] | done [#1823] | done C[#2391] | yes |
 | 21. Read-ahead | done [#1928] | no (row 22) | done [#1616] | done [#1928] | done [#2033] |
 | 22. Direct load | done [#2282] | done [#1901] | yes | done [#2282] | done [#458] |
@@ -77,7 +77,7 @@ last two hold the families with only a Metal, HIP or scoring backend.
 | --- | --- | --- | --- | --- | --- |
 | 1. Prompt tail | yes | yes | yes | yes | yes |
 | 2. Paged KV | done [#1620] | done [#1653] | done [#1284] | yes | yes (own pool) |
-| 3. Prompt store | done [#1755] | done [#1756] | yes | yes | yes |
+| 3. Prompt store | done [#1755] | done [#1756] | open [#2430] | yes | yes |
 | 4. iGPU states | done¹ | done¹ | done¹ | done¹ | yes |
 | 5. State walk | yes | yes | yes | yes | yes |
 | 6. KV ledger | done [#2127] | done [#2127] | done [#2127] | yes | yes |
@@ -96,7 +96,7 @@ last two hold the families with only a Metal, HIP or scoring backend.
 | 19. Shared drafts | no (copies) | no (copies) | no (copies) | open [#1426] | done¹ (opt-in) |
 | 20. Solo chunks | yes | yes | yes | yes | yes |
 | 21. Read-ahead | done [#2033] | done [#2033] | yes | done [#2033] | done [#2033] |
-| 22. Direct load | yes | yes | yes | yes | open [#1924] |
+| 22. Direct load | yes | open [#2449] | open [#2449] | yes | open [#1924] |
 | 23. Page drop | done [#1884] | done [#1884] | done [#1884] | done [#1884] | done [#1884] |
 | 24. L2 prefetch | yes | yes | yes | yes | done¹ |
 | 25. TP ranks | yes | no (4B) | yes | done [#1388] | done¹ |
@@ -338,7 +338,8 @@ below; these are estimates for planning a port, not results.
 
 13. **MoE grouped plans and expert kernels.** One expert plan sorts a step's rows by expert, and one grouped call runs
     every expert's rows ([#558], [#605], NVFP4 in [#629], EXL3 in [#741]). A family adds only its router and its weight
-    format.
+    format. Wide router calls run on the shared register tiles in `zig/kernels/cuda/common/router_tiles.cuh`, the
+    same fma chain a logit: Nemotron's past 32 rows, and qwen3_5's from 257 rows since [#2499].
 
 14. **CUDA graphs for decode and verify.** Each decode or verify shape is captured once and replayed, which removes the
     host's launch cost from every step. `TENSORFOLD_GEMMA4_GRAPHS=0` (and the same switch for Kolibri, Spark
@@ -346,6 +347,16 @@ below; these are estimates for planning a port, not results.
 
 15. **MTP drafts.** The checkpoint's own MTP head drafts tokens that the target verifies in one pass, with the same
     replies as serial decode. `--mtp-drafts` and `--mtp-confidence` size the drafts on Nemotron and GLM.
+
+    GLM CUDA's proposed 32-row prices, three-draft shared MTP cap and wider copy windows are tracked in [#2257].
+    The TP=2 receipt on two GB10s compares main 52427c023e with an earlier revision of the proposed branch: one-stream code 55.4 to 73.7 tok/s
+    (+33.1%), two-stream chat +3.2%, one-stream chat +1.0%, two-stream code +1.3%, prefill within 0.3% and
+    replies 52/0/0 equal/unequal/unverified. The receipt does not identify the drafter mode, so it qualifies
+    neither drafter separately. TP=1, TP=4, sampled runs, copies on and the shared MTP cap on another chip
+    remain open device cells. The shared step-price correction needs no separate device cell: GLM's shared draft
+    allocator uses the measured overhead including its head time, so changing the modeled step only redistributes
+    that same total between fixed and head components. Its row learning, granted-depth and shared-depth limits are
+    off. The preserved shared step values are still checked on the host; the other proposed behavior retains its gates.
 
 16. **DFlash and DFlash2 drafters.** An external block drafter reads the target's hidden taps and drafts a block (or a
     tree) a step. It needs a trained drafter for each target; see [training a drafter](recipes/training-a-drafter.md).
@@ -403,6 +414,8 @@ below; these are estimates for planning a port, not results.
     | --- | --- | --- |
     | flashnext | cold load 74 → 48 s | [#1901] |
     | flashnext | 50 → 43.5 s, next chunk gathered while one packs | [#1960] |
+    | spark25 (4B 8-bit) | cold load 5.0 → 2.5 s | [#2449] |
+    | dory (NVFP4) | cold load 4.8 → 3.8 s | [#2449] |
 
 23. **Page-cache drop after load.** Every CUDA loader drops its checkpoint's pages once the weights are up, so the
     memory goes back to KV and the prompt cache on unified-memory boxes ([#1884]). TP loaders wait for every rank
@@ -548,6 +561,7 @@ below; these are estimates for planning a port, not results.
 [#2162]: https://github.com/ashhart/TensorFold/pull/2162
 [#2165]: https://github.com/ashhart/TensorFold/issues/2165
 [#2432]: https://github.com/ashhart/TensorFold/pull/2432
+[#2499]: https://github.com/ashhart/TensorFold/issues/2499
 [#2167]: https://github.com/ashhart/TensorFold/pull/2167
 [#2211]: https://github.com/ashhart/TensorFold/pull/2211
 [#2215]: https://github.com/ashhart/TensorFold/pull/2215
@@ -561,3 +575,7 @@ below; these are estimates for planning a port, not results.
 [#2288]: https://github.com/ashhart/TensorFold/pull/2288
 [#2306]: https://github.com/ashhart/TensorFold/pull/2306
 [#2391]: https://github.com/ashhart/TensorFold/pull/2391
+[#2449]: https://github.com/ashhart/TensorFold/pull/2449
+[#2430]: https://github.com/ashhart/TensorFold/pull/2430
+
+[#2257]: https://github.com/ashhart/TensorFold/pull/2257

@@ -18,7 +18,9 @@ pub const cuda_after = @import("registry_media.zig").cuda ++
     @import("minimax_cuda_records.zig").cuda ++
     @import("moss_image_cuda_records.zig").cuda ++
     @import("exl3_dense_records.zig").cuda ++
-    @import("lfm2_moe_cuda_records.zig").cuda;
+    @import("exl3_finish_records.zig").cuda ++
+    @import("lfm2_moe_cuda_records.zig").cuda ++
+    @import("dense_attention_records.zig").cuda;
 pub const nvcc_132_after = @import("registry_learning.zig").cuda_132 ++
     @import("paging_pending.zig").cuda_132 ++
     @import("lfm2_moe_cuda_records.zig").cuda_132 ++
@@ -33,7 +35,8 @@ pub const nvcc_133_after = @import("flashnext_tile_records.zig").cuda_133 ++
     @import("glm_cuda_records.zig").cuda_133 ++
     @import("nvcc_133_records.zig").cuda_133 ++
     @import("minimax_cuda_records.zig").cuda_133 ++
-    @import("nvfp4_experts32_records.zig").cuda_133;
+    @import("nvfp4_experts32_records.zig").cuda_133 ++
+    @import("paging_pending.zig").cuda_133;
 pub const cuda_pending = @import("qwen_whole_records.zig").records ++
     @import("cuda_lane_pending.zig").records ++
     @import("weight_only_records.zig").cuda ++
@@ -80,6 +83,7 @@ pub const landed_cuda = registry.cuda ++
     @import("joint_cuda_records.zig").records ++
     registry.glm_pending.sampling ++
     @import("glm_kv_pending.zig").records ++
+    @import("mla_cuda_records.zig").records ++
     @import("exl3_grouped_records.zig").records ++
     @import("proposal_sampling_records.zig").records ++
     @import("flashnext_pages_pending.zig").records ++
@@ -102,3 +106,7 @@ pub const dsv41_pending = @import("registry_union.zig").extra(
     @import("dsv41_pending_1.zig").records ++
         @import("dsv41_pending_2.zig").records,
 );
+
+test {
+    _ = @import("mla_cuda_records.zig");
+}

@@ -3,8 +3,8 @@ const std = @import("std");
 const sys = @import("sys.zig");
 
 pub const Error = error{InvalidEnvironment};
-pub const Scope = enum { common, cuda, metal, xpu, slide, hooks, dsv41 };
-pub const Kind = enum { u32, u64, size, percent, positive, device, segments, mib, bit_width, word, prompt, flag, toggle, real, positive_real, signed_real, range };
+pub const Scope = enum { common, cuda, metal, xpu, slide, hooks, dsv41, gemma4, drama3, glm };
+pub const Kind = enum { u32, u64, size, percent, positive, device, segments, mib, bit_width, word, prompt, flag, toggle, real, positive_real, signed_real, range, path };
 pub const Rule = struct {
     name: [:0]const u8,
     scope: Scope,
@@ -30,6 +30,7 @@ pub fn isReal(kind: Kind) bool {
 }
 
 pub const rules = [_]Rule{
+    .{ .name = "TF_STARTUP_RECEIPT", .scope = .common, .kind = .flag, .forms = "0 or 1 (opt-in startup and first completion receipts)" },
     .{ .name = "TENSORFOLD_VIDEO_TOKENS", .scope = .common, .kind = .u64, .forms = "a nonnegative whole video-token budget (default 16384; unsigned 64-bit count)" },
     .{ .name = "TENSORFOLD_MAX_PDF_PAGES", .scope = .common, .kind = .positive, .forms = "a whole number from 1 to 4294967295 (capped by --vision-max-images)" },
     .{ .name = "TENSORFOLD_PRESSURE_CACHE_PERCENT", .scope = .common, .kind = .percent, .trim = " \t", .forms = "a whole percentage from 0 to 100" },
@@ -37,6 +38,7 @@ pub const rules = [_]Rule{
     .{ .name = "TENSORFOLD_RESTORE_PREFETCH", .scope = .common, .kind = .u64, .trim = " \t", .first_digit = true, .forms = "a whole unsigned 64-bit read count (0 disables reading ahead; capped at 65536)" },
     .{ .name = "TENSORFOLD_RESTORE_PREFETCH_GIB", .scope = .common, .kind = .u64, .trim = " \t", .first_digit = true, .forms = "a whole unsigned 64-bit GiB count (capped at 16777216)" },
     .{ .name = "TENSORFOLD_RESTORE_PREFETCH_MS", .scope = .common, .kind = .u64, .trim = " \t", .first_digit = true, .forms = "whole unsigned 64-bit milliseconds (capped at 1099511627776)" },
+    .{ .name = "TENSORFOLD_TOOL_ID_KEY_FILE", .scope = .common, .kind = .path, .forms = "a path without control characters to a file only its owner can read, holding at least 32 key bytes" },
     .{ .name = "TF_CUDA_DEVICE", .scope = .cuda, .kind = .device, .trim = " ", .forms = "a whole GPU ordinal from 0 to 4294967295, or empty for the default" },
     .{ .name = "TF_CUDA_SEGMENTS", .scope = .cuda, .kind = .segments, .trim = " ", .forms = "a whole number from 1 to 4, or empty for the default" },
     .{ .name = "TF_CUDA_CARVEOUT", .scope = .cuda, .kind = .flag, .forms = "0 or 1" },
@@ -46,16 +48,30 @@ pub const rules = [_]Rule{
     .{ .name = "TF_QMMF_HALF_BELOW", .scope = .cuda, .kind = .size, .forms = "a whole nonnegative native-size block count (0 disables half tiles)" },
     .{ .name = "TENSORFOLD_PROMPT_CACHE_KEEP_OTHERS", .scope = .cuda, .kind = .flag, .forms = "0 or 1" },
     .{ .name = "TF_ROCE_GID_INDEX", .scope = .cuda, .kind = .u32, .forms = "a whole GID index from 0 to 2147483647" },
+    .{ .name = "TF_GEMMA4_CHUNK_SOLO", .scope = .gemma4, .kind = .size, .forms = "a solo prompt pass's rows, a multiple of 512 up to 4096" },
+    .{ .name = "TF_DRAMA_PREFILL_ROWS", .scope = .drama3, .kind = .u32, .trim = " ", .forms = "whole prompt rows a chunk, 1 through 1024 (checked when a Drama 3 checkpoint opens)" },
+    .{ .name = "TF_DRAMA_REFERENCE_CACHE", .scope = .drama3, .kind = .u32, .trim = " ", .forms = "kept reference states, 0 (off) through 16 (checked when a Drama 3 checkpoint opens)" },
     .{ .name = "TF_Q27_COPY_ROWS", .scope = .metal, .kind = .u32, .forms = "a whole number from 0 to 4294967295 (0 disables copied rows)" },
     .{ .name = "TF_Q27_DRAFT_SLOTS", .scope = .metal, .kind = .u32, .forms = "a whole number from 0 to 4294967295 (clamped to the current stream bounds)" },
     .{ .name = "TF_HEAD_GEOMETRY", .scope = .metal, .kind = .size, .forms = "a whole nonnegative native-size geometry count" },
     .{ .name = "TF_PROMPT_ROWS", .scope = .metal, .kind = .prompt, .forms = "a multiple of 16 from 128 to 2048 for native serving" },
     .{ .name = "TF_ANE_COLUMNS", .scope = .metal, .kind = .u32, .forms = "a whole column count from 0 to 4294967295 (0 disables the share)" },
+    .{ .name = "GLM_EHPROJ_NAX", .scope = .metal, .kind = .flag, .forms = "0 or 1 (0 serves GLM's MTP eh_proj on the scalar kernel)" },
     .{ .name = "XPU_A8_BITS", .scope = .xpu, .kind = .bit_width, .forms = "4 or 8" },
     .{ .name = "LFM3_FUSE", .scope = .xpu, .kind = .u32, .forms = "a whole fusion mask from 0 to 4294967295" },
     .{ .name = "TF_SLIDE_POCKET_KEY", .scope = .slide, .kind = .word, .words = &.{ "auto", "reply", "subject", "both" }, .forms = "auto, reply, subject or both" },
     .{ .name = "TF_SLIDE_FIT_GIB", .scope = .slide, .kind = .size, .forms = "a whole nonnegative native-size GiB count" },
+    .{ .name = "TF_SLIDE_POCKET_DUMP", .scope = .slide, .kind = .path, .forms = "a directory path without control characters, where each lesson's read rows are written" },
     .{ .name = "TF_SLIDE_FORGET_FAIL", .scope = .hooks, .kind = .u32, .trim = " ", .forms = "a whole fact index from 0 to 4294967295 (0 disables the planted failure)" },
+    .{ .name = "TF_GLM_HOST_CACHE", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+    .{ .name = "TF_GLM_VISION_HOST", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+    .{ .name = "TF_GLM_PROF", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+    .{ .name = "TF_GLM_LINK_WAIT", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+    .{ .name = "TF_GLM_PDL", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+    .{ .name = "TF_GLM_PROMPT_STEPS", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+    .{ .name = "TF_GLM_SHARED", .scope = .glm, .kind = .flag, .forms = "0 or 1" },
+    .{ .name = "TF_GLM_DFLASH2_LOG", .scope = .glm, .kind = .u64, .forms = "a whole unsigned 64-bit round count (0 logs no drafts)" },
+    .{ .name = "TF_GLM_DRAFT_CONFIDENCE", .scope = .glm, .kind = .real, .max = 1, .forms = "a finite chain-chance cut from 0 to 1 (default 0.7)" },
     .{ .name = "TF_DSV41_MHC_DEFER", .scope = .dsv41, .kind = .toggle, .trim = " \t", .no_word = false, .forms = "0, 1, true, false, on, off or yes (any case)" },
     .{ .name = "TF_DSV41_COEF_LATE", .scope = .dsv41, .kind = .toggle, .trim = " \t", .no_word = false, .forms = "0, 1, true, false, on, off or yes (any case)" },
     .{ .name = "TF_DSV41_LOOKUP", .scope = .dsv41, .kind = .toggle, .trim = " \t", .forms = "0, 1, true, false, on, off, yes or no (any case); blank turns lookup drafts off" },
@@ -144,6 +160,13 @@ pub fn rule(name: []const u8) Rule {
     @panic("unregistered strict environment parser");
 }
 
+/// A compile error unless `name` has a row, so a strict read can never reach `rule`'s panic at run time.
+pub fn registered(comptime name: []const u8) void {
+    @setEvalBranchQuota(20 * rules.len * 64);
+    for (rules) |r| if (std.mem.eql(u8, r.name, name)) return;
+    @compileError(name ++ " has no row in platform/environment.zig");
+}
+
 /// Null means unset, empty or whitespace-only (main's readers used their defaults then), never malformed.
 pub fn parse(name: []const u8, raw: ?[]const u8) Error!?u64 {
     const r = rule(name);
@@ -155,6 +178,10 @@ pub fn parse(name: []const u8, raw: ?[]const u8) Error!?u64 {
         return error.InvalidEnvironment;
     }
     if (r.kind == .toggle) return toggle(r, text) orelse error.InvalidEnvironment;
+    // a path travels as 0, its text read by `path`; the file itself is its reader's to check
+    if (r.kind == .path) return if (for (text) |ch| {
+        if (ch < 0x20 or ch == 0x7f) break true;
+    } else false) error.InvalidEnvironment else 0;
     // a real travels as its f64 bits and a range as lo above hi; `value` and `range` decode them
     if (isReal(r.kind)) return @bitCast(try real(r, text));
     if (r.kind == .range) {
@@ -207,14 +234,16 @@ fn real(r: Rule, text: []const u8) Error!f64 {
     return x;
 }
 
+/// A `.path` setting's text is never shown: a key pasted into it by mistake would reach the log.
 pub fn describe(a: std.mem.Allocator, name: []const u8, raw: []const u8) ![]const u8 {
+    if (rule(name).kind == .path) return std.fmt.allocPrint(a, "{s}: expected {s}", .{ name, rule(name).forms });
     return std.fmt.allocPrint(a, "{s}=\"{f}\": expected {s}", .{ name, std.zig.fmtString(raw), rule(name).forms });
 }
 
 /// A direct family/tool entry point gets the same refusal even when it has no server problem buffer.
 fn checked(name: [:0]const u8, raw: ?[]const u8) Error!?u64 {
     return parse(name, raw) catch {
-        if (!@import("builtin").is_test) std.log.err("{s}=\"{f}\": expected {s}", .{ name, std.zig.fmtString(raw.?), rule(name).forms });
+        if (!@import("builtin").is_test) if (rule(name).kind == .path) std.log.err("{s}: expected {s}", .{ name, rule(name).forms }) else std.log.err("{s}=\"{f}\": expected {s}", .{ name, std.zig.fmtString(raw.?), rule(name).forms });
         return error.InvalidEnvironment;
     };
 }
@@ -225,7 +254,7 @@ pub fn check(name: [:0]const u8, raw: ?[]const u8) Error!void {
 
 /// One setting in its reader's type: a switch as bool, a real as a float, any other kind as its whole number.
 pub fn value(comptime T: type, name: [:0]const u8, raw: ?[]const u8, default: T) Error!T {
-    std.debug.assert(isReal(rule(name).kind) == (@typeInfo(Plain(T)) == .float) and rule(name).kind != .range);
+    std.debug.assert(isReal(rule(name).kind) == (@typeInfo(Plain(T)) == .float) and rule(name).kind != .range and rule(name).kind != .path);
     return decode(T, (try checked(name, raw)) orelse return default);
 }
 
@@ -252,6 +281,13 @@ pub fn range(name: [:0]const u8, raw: ?[]const u8) Error!?[2]u32 {
     return .{ @intCast(n >> 32), @truncate(n) };
 }
 
+/// A `.path` setting's text, or null when unset or blank; nothing is logged, so the caller words the refusal.
+pub fn path(name: [:0]const u8, raw: ?[]const u8) Error!?[]const u8 {
+    std.debug.assert(rule(name).kind == .path);
+    _ = (try parse(name, raw)) orelse return null;
+    return std.mem.trim(u8, raw.?, rule(name).trim);
+}
+
 /// One scope's rules in table order, without allocating: the first malformed value is logged and refused.
 pub fn checkScope(scope: Scope, environment: anytype) Error!void {
     for (rules) |r| if (r.scope == scope and !masked(r, environment)) {
@@ -276,6 +312,9 @@ pub const Flags = struct {
     slide: bool = false,
     hooks: bool = false,
     dsv41: bool = false,
+    gemma4: bool = false,
+    drama3: bool = false,
+    glm: bool = false,
     device: ?u32 = null,
     segments: ?u32 = null,
     carveout: bool = false,
@@ -289,6 +328,9 @@ pub const Flags = struct {
             .slide => f.slide,
             .hooks => f.hooks,
             .dsv41 => f.dsv41,
+            .gemma4 => f.gemma4,
+            .drama3 => f.drama3,
+            .glm => f.glm,
         };
     }
 };

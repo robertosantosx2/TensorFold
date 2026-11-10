@@ -288,6 +288,7 @@ pub fn hostTests(b: *std.Build, draft_ids: *std.Build.Module, build_options: *st
     b.step("test-nemotron-grants-host", "Nemotron shared head-cost and copy grants without a GPU").dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mods.nemotron, .filters = &.{"Nemotron shared prices:"} })).step);
     @import("rows_host.zig").tests(b, native_modules.api, step);
     const native = native_modules.engines;
+    b.step("test-cuda-cache-budget-host", "CUDA cache defaults after stream sizing without devices").dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = native, .filters = &.{"CUDA cache default"} })).step);
     b.step("test-draft-cuda-host", "CUDA draft source metadata without devices").dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = native, .filters = &.{"draft sources:"} })).step);
     @import("cuda_family_host.zig").registerCopyFamilies(b, native, step);
     const copies = b.step("test-nemotron-copies-host", "Nemotron CUDA copy gates and plain equality without devices");
@@ -301,6 +302,7 @@ pub fn hostTests(b: *std.Build, draft_ids: *std.Build.Module, build_options: *st
     @import("release_cuda_refusal.zig").tests(b, step, native_modules.api, mods.nemotron);
     @import("qwen_cost_open.zig").tests(b, mods, native_modules, step);
     const windows_port = @import("windows_host.zig").steps(b, cuda, native_modules.api);
+    @import("locate_host.zig").cudaTests(b, mods.nemotron, step);
     const adapter_tests = b.createModule(.{ .root_source_file = b.path("zig/src/native/slide_adapter_test.zig"), .target = host, .link_libc = true, .imports = &.{.{ .name = "engine_api", .module = native_modules.api }} });
     b.step("test-slide-cuda-host", "Unsupported CUDA learning refuses before device or checkpoint access").dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = native, .filters = &.{"slide admission:"} })).step);
     b.step("test-slide-adapter-host", "Slide adapter: initial learner progress, and --slide's startup refusals").dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = adapter_tests })).step);
@@ -344,7 +346,7 @@ pub fn hostTests(b: *std.Build, draft_ids: *std.Build.Module, build_options: *st
     @import("pull_tests.zig").add(b, host, .debug, native_modules.engines, mods.core, step);
     b.step("test-save-reopen-host", "Unresolved save through actual checkpoint admission").dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mods.core, .filters = &.{"Save recovery:"} })).step);
     b.step("test-trainer-close-host", "Actual native close and real Flash Next trainer ownership sentinels").dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = native, .filters = &.{"Save recovery:"} })).step);
-    const template, const server_tests = @import("cuda_server_host.zig").steps(b, host, cuda, mods, native_modules, windows_port, step, server_steps);
+    const template, const server_tests = @import("cuda_server_host.zig").steps(b, host, cuda, mods, native_modules, build_options, windows_port, step, server_steps);
     // the tokenizer's own tests (memo, steps, regex, unicode) run here: no other test binary reaches them
     for ([_]*std.Build.Module{ cuda, mods.core, mods.lanes, mods.nemotron, mods.qwen35, mods.qwen_vision, flashnextModule(b, host, .debug, cuda, mods.core, mods.lanes, mods.qwen_vision, mods.api), lfm2Module(b, host, .debug, cuda, mods.core), mods.radio, mods.heat, mods.tokenizer, native_modules.api, native, stagger(b, host, .debug) }) |m| step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = m })).step);
     const selected = b.option([]const u8, "modelopt-host-filter", "One portable ModelOpt regression") orelse "modelopt host:";
