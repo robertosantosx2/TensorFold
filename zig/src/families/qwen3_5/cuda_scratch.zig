@@ -63,7 +63,7 @@ pub fn scratch(e: anytype, rows: usize, mode: Mode) !usize {
     inline for (.{ "a", "b", "beta" }) |name| @field(e, name) = try t.alloc(rows * g.v_heads * 2);
     e.g_ = try t.alloc(rows * g.v_heads * 4);
     const delta = t.rewind(shared);
-    inline for (.{ "y", "mix" }) |_| _ = try t.alloc(rows * wide * 2);
+    inline for (.{ "y", "mix" }) |_| _ = try t.alloc(rows * wide * 2); // the attention mixer's y and mix: the same rows
     e.qraw = try t.alloc(rows * 2 * g.attnWidth() * 2);
     e.qn = try t.alloc(rows * g.attnWidth() * 2);
     inline for (.{ "kraw", "vraw", "kn" }) |name| @field(e, name) = try t.alloc(rows * g.kv_heads * head_dim * 2);
