@@ -396,7 +396,6 @@ test "the launch scanner follows local choices and direct engine handles" {
     try std.testing.expectEqualStrings("attn_rows8", sites.items[0].named.?);
 }
 
-
 test "Qwen3.5 prompt tiles predicate padded rows against the actual forward total" {
     const a = std.testing.allocator;
     const io = std.testing.io;

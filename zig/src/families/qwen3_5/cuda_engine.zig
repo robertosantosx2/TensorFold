@@ -101,7 +101,7 @@ pub const Engine = struct {
     /// Persistent model weights; forward scratch has a separate device allocation.
     arena: DeviceBuffer,
     arena_at: usize = 0,
-    /// Forward scratch reserved for the configured prompt and verify ceiling before serving.
+    /// Forward scratch is a separate device allocation: one additional CUDA allocation/driver object under WDDM.
     scratch_buf: ?DeviceBuffer = null,
     scratch_capacity: usize = 0,
     /// Maximum prompt rows admitted by the configured context (capped by the forward kernel limit).
@@ -119,7 +119,7 @@ pub const Engine = struct {
     head: Proj,
     final_norm: u64,
     layers: []Layer,
-    // scratch, max_rows rows each
+    // scratch, scratch_capacity rows each
     h: u64,
     x: u64,
     r: u64,

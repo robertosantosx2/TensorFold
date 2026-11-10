@@ -1,4 +1,4 @@
-//! Qwen3.5 CUDA forward scratch sizing and ownership.
+//! The engine's scratch rows from its arena: the two mixers' rows and the dense MLP's share one region.
 const std = @import("std");
 const cuda = @import("cuda");
 const geometry = @import("cuda_geometry.zig");
@@ -55,6 +55,7 @@ pub fn scratch(e: anytype, rows: usize, mode: Mode) !usize {
     const wide = @max(g.valueWidth(), g.attnWidth(), g.hidden);
     inline for (.{ "h", "x", "r" }) |name| @field(e, name) = try t.alloc(rows * g.hidden * 2);
     e.xs = try t.alloc(rows * (@max(g.intermediate, wide) / 64) * 4);
+    // a layer's mixer, then its MLP, pass only h, x, xs and r (outside it): their rows share one start
     const shared = t.mark();
     inline for (.{ "y", "mix", "z", "v" }) |name| @field(e, name) = try t.alloc(rows * wide * 2);
     inline for (.{ "q", "k" }) |name| @field(e, name) = try t.alloc(rows * g.k_heads * geometry.dk * 2);
@@ -69,6 +70,7 @@ pub fn scratch(e: anytype, rows: usize, mode: Mode) !usize {
     const attention = t.rewind(shared);
     inline for (.{ "gate", "up", "act" }) |name| @field(e, name) = try t.alloc(rows * g.intermediate * 2);
     t.past(&.{ delta, attention });
+    // the decode partials: verify rows only (a prompt chunk's attention runs cuda_prompt_attention's tiles)
     const partials = most_verify * g.q_heads * max_chunks;
     e.pm = try t.alloc(partials * 4);
     e.pl = try t.alloc(partials * 4);
