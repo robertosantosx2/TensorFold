@@ -291,6 +291,31 @@ test "NEPENTHES producer contention increments dropped accounting" {
     try std.testing.expect(std.mem.indexOf(u8, content, "\"dropped_events\":1") != null);
 }
 
+test "NEPENTHES final summary reports writer errors exactly once" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const path = try std.fmt.allocPrint(std.testing.allocator, ".zig-cache/tmp/{s}/trace.jsonl", .{tmp.sub_path});
+    defer std.testing.allocator.free(path);
+    var sink = try Sink.open(std.testing.allocator, std.testing.io, path, "run-summary-error-1");
+    try sink.start();
+    defer sink.close();
+    sink.write_errors.store(1, .monotonic);
+    const request = sink.beginRequest();
+    sink.endRequest(request, 200, false, false);
+    sink.close();
+
+    const content = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, path, std.testing.allocator, .limited(1 << 16));
+    defer std.testing.allocator.free(content);
+    var summaries: usize = 0;
+    var offset: usize = 0;
+    while (std.mem.indexOfPos(u8, content, offset, "\"event_kind\":\"sink_summary\"")) |index| {
+        summaries += 1;
+        offset = index + 1;
+    }
+    try std.testing.expectEqual(@as(usize, 1), summaries);
+    try std.testing.expect(std.mem.indexOf(u8, content, "\"write_errors\":1") != null);
+}
+
 test "NEPENTHES writer counts failed event and summary writes" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
