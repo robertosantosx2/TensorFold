@@ -22,7 +22,8 @@ const Queue = struct {
     /// Called with the sink mutex held. A full queue rejects immediately.
     fn push(q: *Queue, record: Record) bool {
         if (q.count == queue_capacity) return false;
-        q.slots[q.tail] = record;
+        q.slots[q.tail].len = record.len;
+        @memcpy(q.slots[q.tail].bytes[0..record.len], record.bytes[0..record.len]);
         q.tail = (q.tail + 1) % queue_capacity;
         q.count += 1;
         return true;
@@ -31,7 +32,9 @@ const Queue = struct {
     /// Called with the sink mutex held.
     fn pop(q: *Queue) ?Record {
         if (q.count == 0) return null;
-        const record = q.slots[q.head];
+        var record: Record = .{};
+        record.len = q.slots[q.head].len;
+        @memcpy(record.bytes[0..record.len], q.slots[q.head].bytes[0..record.len]);
         q.head = (q.head + 1) % queue_capacity;
         q.count -= 1;
         return record;
