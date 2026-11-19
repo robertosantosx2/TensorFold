@@ -197,3 +197,7 @@ Do not open one broad PR spanning the shared core, server, CUDA and Nsight layer
 ## 11. Current evidence boundary
 
 This document is a design based on the current LEONES NEPENTHES implementation and the TensorFold 1.2.10 source audit. It does not claim a TensorFold connector, TensorFold event stream, CI pass, build, GPU capture or measured overhead exists. Those are separate acceptance gates.
+
+## Source audit — TensorFold 1.2.10
+
+The concrete source-boundary audit is recorded in [SOURCE-AUDIT-1.2.10.md](./SOURCE-AUDIT-1.2.10.md). It verifies the per-request dispatch boundary, keep-alive behavior, response-ID distinction, CUDA launch/graph/stream seams, aggregate memory accounting, and privacy limitations of the request journal. It is source inspection only: no build, tests, runtime trace, GPU capture or overhead measurement is claimed.
