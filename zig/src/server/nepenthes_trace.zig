@@ -277,6 +277,7 @@ test "NEPENTHES producer contention increments dropped accounting" {
     defer std.testing.allocator.free(path);
     var sink = try Sink.open(std.testing.allocator, std.testing.io, path, "run-drop-1");
     try sink.start();
+    defer sink.close();
     sink.mutex.lockUncancelable(sink.io);
     sink.emit("request_start", 1, 0, 0, 0, 1);
     sink.mutex.unlock(sink.io);
@@ -294,6 +295,7 @@ test "NEPENTHES writer counts failed event and summary writes" {
     defer std.testing.allocator.free(path);
     var sink = try Sink.open(std.testing.allocator, std.testing.io, path, "run-write-error-1");
     try sink.start();
+    defer sink.close();
     const fd = sink.fd;
     sink.fd = -1;
     const request = sink.beginRequest();
@@ -317,6 +319,7 @@ test "NEPENTHES concurrent producers allocate distinct request identities" {
     defer std.testing.allocator.free(path);
     var sink = try Sink.open(std.testing.allocator, std.testing.io, path, "run-concurrent-1");
     try sink.start();
+    defer sink.close();
     var threads: [4]std.Thread = undefined;
     for (&threads) |*thread| thread.* = try std.Thread.spawn(.{}, concurrentRequests, .{ &sink, 16 });
     for (threads) |thread| thread.join();
@@ -332,6 +335,7 @@ test "NEPENTHES sink writes request lifecycle and final summary" {
     defer std.testing.allocator.free(path);
     var sink = try Sink.open(std.testing.allocator, std.testing.io, path, "run-host-1");
     try sink.start();
+    defer sink.close();
     const request = sink.beginRequest();
     const second = sink.beginRequest();
     try std.testing.expect(request.id != 0 and second.id != 0 and request.id != second.id);
