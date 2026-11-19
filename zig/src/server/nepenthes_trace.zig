@@ -98,16 +98,16 @@ pub const Sink = struct {
         return .{ .id = id, .started_ns = started };
     }
 
-    pub fn endRequest(s: *Sink, request: Request, status: u16, broken: bool) void {
+    pub fn endRequest(s: *Sink, request: Request, status: u16, broken: bool, incomplete: bool) void {
         if (!s.enabled or request.id == 0) return;
         const ended = @as(u64, @intCast(std.Io.Clock.awake.now(s.io).toNanoseconds()));
         const duration = ended -| request.started_ns;
         if (broken) {
             s.emit("request_cancel", request.id, status, 1, duration, ended);
-        } else if (status >= 400) {
-            s.emit("request_error", request.id, status, 0, duration, ended);
+        } else if (status >= 400 or incomplete) {
+            s.emit("request_error", request.id, status, @intFromBool(incomplete), duration, ended);
         }
-        s.emit("request_end", request.id, status, @intFromBool(broken), duration, ended);
+        s.emit("request_end", request.id, status, @intFromBool(broken or incomplete), duration, ended);
     }
 
     /// Marks the HTTP dispatch boundary without claiming detached work has completed.
@@ -302,7 +302,7 @@ test "NEPENTHES writer counts failed event and summary writes" {
     const fd = sink.fd;
     sink.fd = -1;
     const request = sink.beginRequest();
-    sink.endRequest(request, 200, false);
+    sink.endRequest(request, 200, false, false);
     sink.close();
     _ = c.close(fd);
     try std.testing.expect(sink.write_errors.load(.monotonic) >= 3);
@@ -311,7 +311,7 @@ test "NEPENTHES writer counts failed event and summary writes" {
 fn concurrentRequests(sink: *Sink, count: usize) void {
     for (0..count) |_| {
         const request = sink.beginRequest();
-        sink.endRequest(request, 200, false);
+        sink.endRequest(request, 200, false, false);
     }
 }
 
@@ -346,7 +346,7 @@ test "NEPENTHES sink writes request lifecycle and final summary" {
     const background_started = sink.backgroundStart(request.id);
     sink.backgroundEnd(request.id, background_started, false, false);
     sink.endBackgroundRequest(request, false, false);
-    sink.endRequest(second, 500, false);
+    sink.endRequest(second, 500, false, false);
     const cancelled = sink.beginRequest();
     sink.dispatchEnd(cancelled, 200, false);
     const cancelled_started = sink.backgroundStart(cancelled.id);
