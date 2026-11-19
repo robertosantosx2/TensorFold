@@ -3,6 +3,8 @@
 **Status:** design contract accepted; [TensorFold issue #1](https://github.com/robertosantosx2/TensorFold/issues/1) closed. Shared LEONES envelope validator merged; host-only runtime connector is implemented in [PR #6](https://github.com/robertosantosx2/TensorFold/pull/6) for [issue #3](https://github.com/robertosantosx2/TensorFold/issues/3), pending exact-head host CI and review. No CUDA/NVTX/Nsight acceptance is claimed.
 **Scope:** one shared NEPENTHES core in LEONES and thin, engine-owned connectors.
 
+**Global authority:** [LEONES `NEPENTHES-INDEX.md`](https://github.com/robertosantosx2/LEONES/blob/main/research/moe/tandem.cpp/NEPENTHES-INDEX.md) is the sole source of truth for priorities, project status and architecture decisions. This TensorFold document is a subordinate engine-specific annex; if it diverges from the INDEX, the INDEX prevails.
+
 ## 1. Goal and non-goals
 
 NEPENTHES observes inference runs without becoming part of the inference algorithm. It must provide one run bundle, one event vocabulary and one evidence pipeline for multiple engines. Engine-specific probes translate native lifecycle and accelerator operations into that shared contract.
