@@ -204,10 +204,13 @@ const Job = struct {
             break :blk !j.cancelled;
         };
         const got = if (begun) j.work(&cx) else null;
-        const failed = failedOutcome(got) and !j.cancelled;
-        j.srv.nepenthes.backgroundEnd(j.nepenthes_request_id, trace_started, j.cancelled, failed);
-        j.srv.nepenthes.endBackgroundRequest(.{ .id = j.nepenthes_request_id, .started_ns = j.nepenthes_request_started_ns }, j.cancelled, failed);
+        const srv = j.srv;
+        const request: @import("nepenthes_trace.zig").Request = .{ .id = j.nepenthes_request_id, .started_ns = j.nepenthes_request_started_ns };
+        const cancelled = j.cancelled;
+        const failed = failedOutcome(got) and !cancelled;
+        srv.nepenthes.backgroundEnd(request.id, trace_started, cancelled, failed);
         m.end(j, &cx, got);
+        srv.nepenthes.endBackgroundRequest(request, cancelled, failed);
     }
 
     fn failedOutcome(got: ?Value) bool {
