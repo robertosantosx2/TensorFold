@@ -27,6 +27,7 @@ const slide_graph = @import("slide_graph.zig");
 const slide_lesson = @import("slide_lesson.zig");
 const cortheon = @import("cortheon/cortheon.zig");
 const idle_unload = @import("idle_unload.zig");
+const nepenthes_trace = @import("nepenthes_trace.zig");
 const Value = json.Value;
 const Cx = errors.Cx;
 const Allocator = std.mem.Allocator;
@@ -80,6 +81,9 @@ pub const Config = struct {
     /// TENSORFOLD_REQUEST_LOG: where chat and completion bodies are appended; null: nowhere.
     request_log: ?[]const u8 = null,
     journal: ?*@import("request_journal.zig").Journal = null, // serve owns TENSORFOLD_REQUEST_JOURNAL
+    /// Opt-in host-only NEPENTHES JSONL connector; both values must be supplied together.
+    nepenthes_trace_path: ?[]const u8 = null,
+    nepenthes_run_id: ?[]const u8 = null,
     /// TENSORFOLD_PHASE_METRICS=1: /metrics adds the queue phase's histogram; unset, its families are as before.
     phase_metrics: bool = false,
     /// The Spark server's keys in each reply's ``tensorfold`` block (spark_wire.zig): DeepSeek-V4, or TENSORFOLD_WIRE.
@@ -156,6 +160,7 @@ pub const Server = struct {
     think_close: []const u32 = &.{},
     think_close_end: ?u32 = null,
     metrics: metrics.Metrics,
+    nepenthes: nepenthes_trace.Sink = .{},
     /// Scheduler load the engine publishes as it works, and this server's identity and activity (load_ledger.zig).
     load: api.load_ledger.Ledger,
     store: responses.Store,
@@ -203,6 +208,8 @@ pub const Server = struct {
         srv.* = .{ .tool_ids = tool_ids, .gpa = gpa, .io = io, .engine = engine, .info = engine.info(), .text = text, .config = config, .keys = keys, .metrics = .{ .gpa = gpa, .phases = config.phase_metrics }, .load = .init(io), .store = .{ .gpa = gpa }, .arena = .init(gpa), .slide = .init(gpa, io, config.slide_graph), .teacher = .init(gpa) };
         srv.config.tool_id_key = null; // its key is zeroed: `tool_ids` is the one copy
         errdefer srv.deinit(); // a later step's failure stops the keepalive before the caller closes the engine
+        srv.nepenthes = try nepenthes_trace.Sink.open(gpa, io, config.nepenthes_trace_path, config.nepenthes_run_id);
+        try srv.nepenthes.start();
         @import("stale_temps.zig").discard(io, config); // a crash's temporaries beside the note and the graph
         if (srv.info.embeddings != null and srv.info.capability(.text_generation)) return error.InvalidEmbeddingCapabilities;
         if (srv.info.readouts != null and (srv.info.capability(.text_generation) or srv.info.embeddings != null)) return error.InvalidReadoutCapabilities;
@@ -269,6 +276,7 @@ pub const Server = struct {
 
     pub fn deinit(srv: *Server) void {
         srv.background_jobs.shutdown(srv); // they stop and end before the engine, store and counts they use go
+        srv.nepenthes.close();
         srv.load.detach(false); // an engine still attached is still open: it stops writing before anything here frees
         srv.stopKeepalive();
         if (srv.grammars) |g| g.close();
@@ -494,6 +502,25 @@ pub const Server = struct {
     }
 
     pub fn dispatch(srv: *Server, conn: *http_conn.Conn, a: Allocator) void {
+        if (!srv.nepenthes.enabled) {
+            routes.dispatch(srv, conn, a);
+            if (!conn.response_complete) conn.close = true;
+            return;
+        }
+        conn.response_status = 0;
+        const trace_request = srv.nepenthes.beginRequest();
+        conn.nepenthes_request_id = trace_request.id;
+        conn.nepenthes_request_started_ns = trace_request.started_ns;
+        conn.nepenthes_background_owned = false;
+        defer {
+            const failed = conn.broken or !conn.response_complete;
+            srv.nepenthes.dispatchEnd(trace_request, conn.response_status, failed);
+            if (!conn.nepenthes_background_owned) srv.nepenthes.endRequest(trace_request, conn.response_status, failed);
+            conn.nepenthes_request_id = 0;
+            conn.nepenthes_request_started_ns = 0;
+            conn.nepenthes_background_owned = false;
+            conn.response_status = 0;
+        }
         routes.dispatch(srv, conn, a);
         if (!conn.response_complete) conn.close = true;
     }

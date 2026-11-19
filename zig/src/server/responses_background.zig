@@ -149,10 +149,12 @@ const Job = struct {
     cancelled: bool = false, // a cancel was answered: the end is kept as "cancelled"
     deleted: bool = false,
     dropped: std.atomic.Value(bool) = .init(false), // the gone hook: the turn stops and keeps nothing
+    nepenthes_request_id: u64 = 0, // copied explicitly from the owning HTTP request; never inferred
+    nepenthes_request_started_ns: u64 = 0,
 
-    fn make(srv: *Server, a: Allocator, body: Value, t: translate.Request, key: ?[32]u8) !*Job {
+    fn make(srv: *Server, a: Allocator, body: Value, t: translate.Request, key: ?[32]u8, nepenthes_request_id: u64, nepenthes_request_started_ns: u64) !*Job {
         const j = try srv.gpa.create(Job);
-        j.* = .{ .srv = srv, .arena = .init(srv.gpa), .key = key, .t = t };
+        j.* = .{ .srv = srv, .arena = .init(srv.gpa), .key = key, .t = t, .nepenthes_request_id = nepenthes_request_id, .nepenthes_request_started_ns = nepenthes_request_started_ns };
         errdefer j.free();
         const ja = j.arena.allocator();
         j.base = (try json.deepCopy(ja, .{ .object = try responses.newBase(srv, a, body, t) })).object;
@@ -194,18 +196,33 @@ const Job = struct {
     fn run(j: *Job) void {
         const m = &j.srv.background_jobs;
         var cx: errors.Cx = .{ .a = j.arena.allocator() };
+        const trace_started = j.srv.nepenthes.backgroundStart(j.nepenthes_request_id);
         const begun = blk: {
             m.mutex.lockUncancelable(j.srv.io);
             defer m.mutex.unlock(j.srv.io);
             if (!j.cancelled) j.state = .in_progress;
             break :blk !j.cancelled;
         };
-        m.end(j, &cx, if (begun) j.work(&cx) else null);
+        const got = if (begun) j.work(&cx) else null;
+        const failed = failedOutcome(got) and !j.cancelled;
+        j.srv.nepenthes.backgroundEnd(j.nepenthes_request_id, trace_started, j.cancelled, failed);
+        j.srv.nepenthes.endBackgroundRequest(.{ .id = j.nepenthes_request_id, .started_ns = j.nepenthes_request_started_ns }, j.cancelled, failed);
+        m.end(j, &cx, got);
+    }
+
+    fn failedOutcome(got: ?Value) bool {
+        const value = got orelse return true;
+        if (value == .object) {
+            if (value.object.get("status")) |status| {
+                return status == .string and std.mem.eql(u8, status.string, "failed");
+            }
+        }
+        return false;
     }
 
     /// The turn as a whole (unstreamed) POST runs it, on a connection that is gone only when cancelled.
     fn work(j: *Job, cx: *errors.Cx) ?Value {
-        var conn: Conn = .{ .fd = -1, .peer = "", .buf = &.{}, .gpa = cx.a, .gone_hook = .{ .ctx = j, .call = gone }, .key_digest = j.key };
+        var conn: Conn = .{ .fd = -1, .peer = "", .buf = &.{}, .gpa = cx.a, .gone_hook = .{ .ctx = j, .call = gone }, .key_digest = j.key, .nepenthes_request_id = j.nepenthes_request_id, .nepenthes_request_started_ns = j.nepenthes_request_started_ns };
         const sink: Sink = .{ .ctx = j, .vt = &.{ .open = quiet, .event = unheard, .keepalive = quiet } };
         return switch (responses.turn(j.srv, cx.a, &conn, cx, .null, j.t, sink, .{ .base = j.base })) {
             .whole => |v| v,
@@ -246,13 +263,16 @@ fn failed(a: Allocator, base: *json.Object, payload: Value) !Value {
 /// POST /v1/responses with ``background: true``: the queued response at once, its turn on its own thread.
 pub fn create(srv: *Server, conn: *Conn, a: Allocator, body: Value, t: translate.Request, held: ?*gate.Held) void {
     const h = held orelse return responses.refuse(conn, a, "background: true is served by the HTTP route only", 400, "background");
-    const job = Job.make(srv, a, body, t, conn.key_digest) catch return problem(conn, a, 503, "server_error", "out of memory");
+    const job = Job.make(srv, a, body, t, conn.key_digest, conn.nepenthes_request_id, conn.nepenthes_request_started_ns) catch return problem(conn, a, 503, "server_error", "out of memory");
     const queued = job.snapshot(a) catch {
         job.free();
         return problem(conn, a, 503, "server_error", "out of memory");
     };
     switch (srv.background_jobs.start(srv, job, h)) {
-        .queued => routes.sendValue(conn, a, 200, queued),
+        .queued => {
+            conn.nepenthes_background_owned = conn.nepenthes_request_id != 0;
+            routes.sendValue(conn, a, 200, queued);
+        },
         .closed => {
             job.free();
             routes.draining(conn, false);

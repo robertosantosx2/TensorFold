@@ -185,6 +185,12 @@ pub fn run(gpa: Allocator, io: std.Io, args: cli.Args, s: Setup) u8 {
         return 1;
     } else null;
     defer if (journal) |j| j.close(); // after the server's own deinit, which runs first
+    const nepenthes_path = env(s, "NEPENTHES_TRACE_JSONL");
+    const nepenthes_run_id = env(s, "NEPENTHES_RUN_ID");
+    if ((nepenthes_path == null) != (nepenthes_run_id == null)) {
+        std.debug.print("tensorfold: NEPENTHES_TRACE_JSONL and NEPENTHES_RUN_ID must be set together\n", .{});
+        return 1;
+    }
     const config: server_mod.Config = .{
         .browser = .{ .allowed_hosts = args.allowed_host, .allowed_origins = args.allowed_origin, .cors_origins = args.cors_origin },
         .allowed_controls = args.allowed_controls,
@@ -219,6 +225,8 @@ pub fn run(gpa: Allocator, io: std.Io, args: cli.Args, s: Setup) u8 {
         .sse_keepalive_s = keepalive_s,
         .request_log = env(s, "TENSORFOLD_REQUEST_LOG"),
         .journal = journal,
+        .nepenthes_trace_path = nepenthes_path,
+        .nepenthes_run_id = nepenthes_run_id,
         .phase_metrics = if (env(s, "TENSORFOLD_PHASE_METRICS")) |v| std.mem.eql(u8, v, "1") else false,
         .spark_stats = spark_stats,
         .dashboard = args.dashboard,
