@@ -122,7 +122,7 @@ The numbers and operation labels above are illustrative fixtures, not measured T
 
 ## Runtime implementation status
 
-The host-only connector candidate is [TensorFold PR #6](https://github.com/robertosantosx2/TensorFold/pull/6), tracked by [issue #3](https://github.com/robertosantosx2/TensorFold/issues/3). It emits HTTP dispatch/request and explicitly owned Responses background lifecycle events plus `sink_summary`. For background requests, `dispatch_end` marks the HTTP boundary; `request_end` is emitted only after the detached job actually ends. Streaming work remains synchronous through the dispatch call. No CUDA, NVTX, Nsight or device-memory event is emitted by this slice. Exact-head host CI and review are pending.
+The host-only connector candidate is [TensorFold PR #6](https://github.com/robertosantosx2/TensorFold/pull/6), tracked by [issue #3](https://github.com/robertosantosx2/TensorFold/issues/3). It emits HTTP dispatch/request and explicitly owned Responses background lifecycle events plus `sink_summary`. For background requests, `dispatch_end` marks the HTTP boundary; `request_end` is emitted only after the detached job actually ends. A client disconnect emits `request_cancel`; a non-cancellation failure emits `request_error`. Their values contain only numeric status/cancel/failure flags. Streaming work remains synchronous through the dispatch call. No CUDA, NVTX, Nsight or device-memory event is emitted by this slice. Exact-head host CI and review are pending.
 
 ## 5. Event vocabulary and connector mapping
 
