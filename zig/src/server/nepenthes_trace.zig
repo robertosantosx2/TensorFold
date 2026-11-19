@@ -261,7 +261,7 @@ test "NEPENTHES refuses an existing trace path instead of mixing runs" {
 
 test "NEPENTHES queue is bounded and rejects overflow" {
     var q: Queue = .{};
-    var record: Record = .{};
+    const record: Record = .{};
     for (0..queue_capacity) |_| try std.testing.expect(q.push(record));
     try std.testing.expect(!q.push(record));
     try std.testing.expectEqual(queue_capacity, q.count);
