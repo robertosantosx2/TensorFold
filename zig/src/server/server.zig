@@ -501,27 +501,34 @@ pub const Server = struct {
         }
     }
 
+    fn beginTraceRequest(srv: *Server, conn: *http_conn.Conn) nepenthes_trace.Request {
+        conn.response_status = 0;
+        const request = srv.nepenthes.beginRequest();
+        conn.nepenthes_request_id = request.id;
+        conn.nepenthes_request_started_ns = request.started_ns;
+        conn.nepenthes_background_owned = false;
+        return request;
+    }
+
+    fn endTraceRequest(srv: *Server, conn: *http_conn.Conn, request: nepenthes_trace.Request) void {
+        const broken = conn.broken;
+        const incomplete = !conn.response_complete;
+        srv.nepenthes.dispatchEnd(request, conn.response_status, broken or incomplete);
+        if (!conn.nepenthes_background_owned) srv.nepenthes.endRequest(request, conn.response_status, broken, incomplete);
+        conn.nepenthes_request_id = 0;
+        conn.nepenthes_request_started_ns = 0;
+        conn.nepenthes_background_owned = false;
+        conn.response_status = 0;
+    }
+
     pub fn dispatch(srv: *Server, conn: *http_conn.Conn, a: Allocator) void {
         if (!srv.nepenthes.enabled) {
             routes.dispatch(srv, conn, a);
             if (!conn.response_complete) conn.close = true;
             return;
         }
-        conn.response_status = 0;
-        const trace_request = srv.nepenthes.beginRequest();
-        conn.nepenthes_request_id = trace_request.id;
-        conn.nepenthes_request_started_ns = trace_request.started_ns;
-        conn.nepenthes_background_owned = false;
-        defer {
-            const broken = conn.broken;
-            const incomplete = !conn.response_complete;
-            srv.nepenthes.dispatchEnd(trace_request, conn.response_status, broken or incomplete);
-            if (!conn.nepenthes_background_owned) srv.nepenthes.endRequest(trace_request, conn.response_status, broken, incomplete);
-            conn.nepenthes_request_id = 0;
-            conn.nepenthes_request_started_ns = 0;
-            conn.nepenthes_background_owned = false;
-            conn.response_status = 0;
-        }
+        const trace_request = srv.beginTraceRequest(conn);
+        defer srv.endTraceRequest(conn, trace_request);
         routes.dispatch(srv, conn, a);
         if (!conn.response_complete) conn.close = true;
     }
@@ -625,4 +632,36 @@ test "queue phase: server notes measured waits only when explicitly enabled" {
         try std.testing.expectEqual(@as(u64, if (enabled) 1 else 0), srv.metrics.queue.n);
         try std.testing.expectEqual(@as(u64, 6), srv.metrics.generation);
     }
+}
+
+test "NEPENTHES assigns fresh request IDs on keep-alive Conn reuse" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const path = try std.fmt.allocPrint(std.testing.allocator, ".zig-cache/tmp/{s}/keepalive.jsonl", .{tmp.sub_path});
+    defer std.testing.allocator.free(path);
+
+    var srv: Server = undefined;
+    srv.nepenthes = try nepenthes_trace.Sink.open(std.testing.allocator, std.testing.io, path, "run-keepalive-1");
+    try srv.nepenthes.start();
+    defer srv.nepenthes.close();
+
+    var conn: http_conn.Conn = .{ .fd = -1, .peer = "", .buf = &.{}, .gpa = std.testing.allocator };
+    conn.response_complete = true;
+    conn.response_status = 200;
+    const first = srv.beginTraceRequest(&conn);
+    srv.endTraceRequest(&conn, first);
+
+    conn.response_complete = false;
+    conn.response_status = 0;
+    const second = srv.beginTraceRequest(&conn);
+    conn.response_complete = true;
+    conn.response_status = 200;
+    try std.testing.expect(first.id != 0 and second.id != 0 and first.id != second.id);
+    srv.endTraceRequest(&conn, second);
+
+    srv.nepenthes.close();
+    const content = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, path, std.testing.allocator, .limited(1 << 16));
+    defer std.testing.allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "\"request_id\":1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "\"request_id\":2") != null);
 }
