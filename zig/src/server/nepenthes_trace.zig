@@ -120,7 +120,7 @@ pub const Sink = struct {
         const ended = @as(u64, @intCast(std.Io.Clock.awake.now(s.io).toNanoseconds()));
         const duration = ended -| request.started_ns;
         if (cancelled) {
-            s.emit("request_cancel", request.id, 1, 0, duration, ended);
+            s.emit("request_cancel", request.id, 0, 1, duration, ended);
         } else if (failed) {
             s.emit("request_error", request.id, 0, 1, duration, ended);
         }
