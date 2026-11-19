@@ -207,9 +207,9 @@ const Job = struct {
         const srv = j.srv;
         const request: @import("nepenthes_trace.zig").Request = .{ .id = j.nepenthes_request_id, .started_ns = j.nepenthes_request_started_ns };
         const cancelled = j.cancelled;
-        const failed = failedOutcome(got) and !cancelled;
-        srv.nepenthes.backgroundEnd(request.id, trace_started, cancelled, failed);
-        srv.nepenthes.endBackgroundRequest(request, cancelled, failed);
+        const work_failed = failedOutcome(got) and !cancelled;
+        srv.nepenthes.backgroundEnd(request.id, trace_started, cancelled, work_failed);
+        srv.nepenthes.endBackgroundRequest(request, cancelled, work_failed);
         m.end(j, &cx, got);
     }
 
