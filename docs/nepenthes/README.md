@@ -1,6 +1,6 @@
 # NEPENTHES architecture for inference engines
 
-**Status:** design contract for TensorFold 1.2.10; implementation not yet accepted.
+**Status:** design contract for TensorFold 1.2.10; shared LEONES envelope validator accepted and merged; TensorFold runtime connector not yet implemented.
 **Scope:** one shared NEPENTHES core in LEONES and thin, engine-owned connectors.
 
 ## 1. Goal and non-goals
@@ -62,9 +62,14 @@ The following capabilities already exist in LEONES and are the implementation ba
 | AIPerf 0.13.0 runner, evidence builder and overhead gates | Shared workload driver and measured performance/overhead receipts; engine adapters do not implement their own benchmark framework |
 | OTLP export/transport and reports | Optional downstream export from canonical evidence, not a requirement for engine startup |
 
-Important compatibility gap (verified against LEONES `main` on 2026-11-19): `scripts/nepenthes_llama_trace_import.py` requires `source == "llama.cpp"` for both ordinary events and `sink_summary`; it also restricts `clock_domain` to `steady_clock`. It is therefore not a generic multi-engine importer, and changing only the source field cannot make TensorFold traces acceptable. The required shared-validator work is tracked in [LEONES issue #207](https://github.com/robertosantosx2/LEONES/issues/207). That issue must extract a strict common envelope validator, register allowed connector identities explicitly, and retain source-specific semantics and llama.cpp compatibility. Do not work around this by pretending TensorFold events came from llama.cpp.
+The shared-envelope compatibility gate is now closed: [LEONES PR #210](https://github.com/robertosantosx2/LEONES/pull/210) was merged to `main` as `fcaf17005f7771c2521fc07387409a79c47f1b7b`, closing [LEONES issue #207](https://github.com/robertosantosx2/LEONES/issues/207). The common importer now has a closed registry for `llama.cpp`, `tensorfold` and `tandem.cpp`, explicit `--source` selection, source-specific lifecycle rules, unsigned bounds, privacy checks and final `sink_summary` validation. Its post-merge host CI passed all eight checks. TensorFold traces must use `--source tensorfold`; never relabel them as llama.cpp. The shared contract is documented in [LEONES TRACE-ENVELOPE.md](https://github.com/robertosantosx2/LEONES/blob/main/docs/subprojects/NEPENTHES/TRACE-ENVELOPE.md).
 
 Tandem.cpp's existing work is a connector/reference implementation, not a second core. llama.cpp's current connector and AIPerf path are the second reference. Any differences between their actual event envelopes must be reconciled against repository code and fixtures before freezing the shared schema.
+
+
+## 3.1 Current implementation gate
+
+The first TensorFold runtime slice is now unblocked by the accepted LEONES validator and the completed ATC overlap analysis. The next PR is host-only: opt-in/disabled no-op, bounded sink, request identity allocated per HTTP request at `routes.dispatch`, and privacy-safe events. It must not add CUDA probes, synchronization, NVTX/Nsight calls, or mandatory dependencies. Because HTTP keep-alive reuses `Conn`, a connection ID is not a request ID. Background/streaming work must not be reported as complete merely because `dispatch` returned; either propagate the same request ID to its actual completion or emit a clearly distinct dispatch-boundary event. Host acceptance must cover multiple requests on one connection, concurrent requests, balanced lifecycle where observable, drops/errors, final `sink_summary`, and disabled path.
 
 ## 4. Canonical event envelope
 
