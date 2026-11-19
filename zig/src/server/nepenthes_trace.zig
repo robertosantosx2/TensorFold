@@ -150,7 +150,8 @@ pub const Sink = struct {
         const unix_ns = @as(u64, @intCast(std.Io.Clock.real.now(s.io).toNanoseconds()));
         const label = if (std.mem.startsWith(u8, kind, "background_")) "responses.background" else "http.request";
         var record: Record = .{};
-        const line = std.fmt.bufPrint(&record.bytes,
+        const line = std.fmt.bufPrint(
+            &record.bytes,
             "{{\"schema_version\":\"1.0\",\"run_id\":\"{s}\",\"event_id\":\"tf-{d}\",\"source\":\"tensorfold\",\"timestamp_unix_ns\":{d},\"monotonic_ns\":{d},\"request_id\":{d},\"event_kind\":\"{s}\",\"label\":\"{s}\",\"value0\":{d},\"value1\":{d},\"duration_ns\":{d},\"flags\":0,\"clock_domain\":\"steady_clock\"}}\n",
             .{ s.run_id, event_id, unix_ns, monotonic_ns, request_id, kind, label, value0, value1, duration_ns },
         ) catch {
@@ -194,7 +195,8 @@ pub const Sink = struct {
         var bytes: [record_capacity]u8 = undefined;
         const event_id = s.next_event_id.fetchAdd(1, .monotonic);
         const unix_ns = @as(u64, @intCast(std.Io.Clock.real.now(s.io).toNanoseconds()));
-        const line = std.fmt.bufPrint(&bytes,
+        const line = std.fmt.bufPrint(
+            &bytes,
             "{{\"schema_version\":\"1.0\",\"run_id\":\"{s}\",\"event_id\":\"tf-summary-{d}\",\"source\":\"tensorfold\",\"timestamp_unix_ns\":{d},\"event_kind\":\"sink_summary\",\"events_drained\":{d},\"dropped_events\":{d},\"write_errors\":{d}}}\n",
             .{ s.run_id, event_id, unix_ns, s.events_drained.load(.monotonic), s.dropped_events.load(.monotonic), s.write_errors.load(.monotonic) },
         ) catch return;
