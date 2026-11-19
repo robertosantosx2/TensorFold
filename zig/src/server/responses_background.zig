@@ -209,8 +209,8 @@ const Job = struct {
         const cancelled = j.cancelled;
         const failed = failedOutcome(got) and !cancelled;
         srv.nepenthes.backgroundEnd(request.id, trace_started, cancelled, failed);
-        m.end(j, &cx, got);
         srv.nepenthes.endBackgroundRequest(request, cancelled, failed);
+        m.end(j, &cx, got);
     }
 
     fn failedOutcome(got: ?Value) bool {
