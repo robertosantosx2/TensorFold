@@ -513,9 +513,10 @@ pub const Server = struct {
         conn.nepenthes_request_started_ns = trace_request.started_ns;
         conn.nepenthes_background_owned = false;
         defer {
-            const failed = conn.broken or !conn.response_complete;
-            srv.nepenthes.dispatchEnd(trace_request, conn.response_status, failed);
-            if (!conn.nepenthes_background_owned) srv.nepenthes.endRequest(trace_request, conn.response_status, failed);
+            const broken = conn.broken;
+            const incomplete = !conn.response_complete;
+            srv.nepenthes.dispatchEnd(trace_request, conn.response_status, broken or incomplete);
+            if (!conn.nepenthes_background_owned) srv.nepenthes.endRequest(trace_request, conn.response_status, broken, incomplete);
             conn.nepenthes_request_id = 0;
             conn.nepenthes_request_started_ns = 0;
             conn.nepenthes_background_owned = false;
