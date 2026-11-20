@@ -1,7 +1,9 @@
 # NEPENTHES architecture for inference engines
 
-**Status:** design contract accepted; [TensorFold issue #1](https://github.com/robertosantosx2/TensorFold/issues/1) closed. Shared LEONES envelope validator merged; host-only runtime connector tracked in [TensorFold issue #3](https://github.com/robertosantosx2/TensorFold/issues/3), not yet implemented.
+**Status:** design contract accepted; [TensorFold issue #1](https://github.com/robertosantosx2/TensorFold/issues/1) closed. Shared LEONES envelope validator merged; host-only runtime connector is implemented in [PR #6](https://github.com/robertosantosx2/TensorFold/pull/6) for [issue #3](https://github.com/robertosantosx2/TensorFold/issues/3), pending exact-head host CI and review. No CUDA/NVTX/Nsight acceptance is claimed.
 **Scope:** one shared NEPENTHES core in LEONES and thin, engine-owned connectors.
+
+**Global authority:** [LEONES `NEPENTHES-INDEX.md`](https://github.com/robertosantosx2/LEONES/blob/main/research/moe/tandem.cpp/NEPENTHES-INDEX.md) is the sole source of truth for priorities, project status and architecture decisions. This TensorFold document is a subordinate engine-specific annex; if it diverges from the INDEX, the INDEX prevails.
 
 ## 1. Goal and non-goals
 
@@ -110,19 +112,26 @@ Rules:
 Example request lifecycle:
 
 ```json
-{"schema_version":"1.0","run_id":"run-example-001","event_id":"tf-000001","source":"tensorfold","timestamp_unix_ns":1800000000000000000,"monotonic_ns":8100000000,"request_id":42,"event_kind":"request_start","label":"server.request","value0":128,"value1":0,"duration_ns":0,"flags":0,"clock_domain":"steady_clock"}
-{"schema_version":"1.0","run_id":"run-example-001","event_id":"tf-000002","source":"tensorfold","timestamp_unix_ns":1800000000120000000,"monotonic_ns":8220000000,"request_id":42,"event_kind":"kernel_launch","label":"cuda.attention","value0":256,"value1":128,"duration_ns":0,"flags":0,"clock_domain":"steady_clock","correlation_token":9001,"attribution_level":"exact"}
-{"schema_version":"1.0","run_id":"run-example-001","event_id":"tf-000003","source":"tensorfold","timestamp_unix_ns":1800000000500000000,"monotonic_ns":8600000000,"request_id":42,"event_kind":"request_end","label":"server.request","value0":64,"value1":64,"duration_ns":380000000,"flags":0,"clock_domain":"steady_clock"}
-{"schema_version":"1.0","run_id":"run-example-001","event_id":"tf-summary-001","source":"tensorfold","timestamp_unix_ns":1800000000501000000,"event_kind":"sink_summary","events_drained":3,"dropped_events":0,"write_errors":0}
+{"schema_version":"1.0","run_id":"run-example-001","event_id":"tf-1","source":"tensorfold","timestamp_unix_ns":1800000000000000000,"monotonic_ns":8100000000,"request_id":42,"event_kind":"request_start","label":"http.request","value0":0,"value1":0,"duration_ns":0,"flags":0,"clock_domain":"steady_clock"}
+{"schema_version":"1.0","run_id":"run-example-001","event_id":"tf-2","source":"tensorfold","timestamp_unix_ns":1800000000120000000,"monotonic_ns":8220000000,"request_id":42,"event_kind":"dispatch_end","label":"http.request","value0":200,"value1":0,"duration_ns":120000000,"flags":0,"clock_domain":"steady_clock"}
+{"schema_version":"1.0","run_id":"run-example-001","event_id":"tf-3","source":"tensorfold","timestamp_unix_ns":1800000000130000000,"monotonic_ns":8230000000,"request_id":42,"event_kind":"background_start","label":"responses.background","value0":0,"value1":0,"duration_ns":0,"flags":0,"clock_domain":"steady_clock"}
+{"schema_version":"1.0","run_id":"run-example-001","event_id":"tf-4","source":"tensorfold","timestamp_unix_ns":1800000000500000000,"monotonic_ns":8600000000,"request_id":42,"event_kind":"background_end","label":"responses.background","value0":0,"value1":0,"duration_ns":370000000,"flags":0,"clock_domain":"steady_clock"}
+{"schema_version":"1.0","run_id":"run-example-001","event_id":"tf-5","source":"tensorfold","timestamp_unix_ns":1800000000501000000,"monotonic_ns":8601000000,"request_id":42,"event_kind":"request_end","label":"http.request","value0":0,"value1":0,"duration_ns":501000000,"flags":0,"clock_domain":"steady_clock"}
+{"schema_version":"1.0","run_id":"run-example-001","event_id":"tf-summary-6","source":"tensorfold","timestamp_unix_ns":1800000000502000000,"event_kind":"sink_summary","events_drained":5,"dropped_events":0,"write_errors":0}
 ```
 
 The numbers and operation labels above are illustrative fixtures, not measured TensorFold output. The example demonstrates the envelope only; production fixtures must be validated by the shared LEONES importer.
+
+## Runtime implementation status
+
+The host-only connector candidate is [TensorFold PR #6](https://github.com/robertosantosx2/TensorFold/pull/6), tracked by [issue #3](https://github.com/robertosantosx2/TensorFold/issues/3). It emits HTTP dispatch/request and explicitly owned Responses background lifecycle events plus `sink_summary`. For background requests, `dispatch_end` marks the HTTP boundary; `request_end` is emitted only after the detached job actually ends. A client disconnect emits `request_cancel`; a non-cancellation failure emits `request_error`. Their values contain only numeric status/cancel/failure flags. Streaming work remains synchronous through the dispatch call. Because the worker is scheduled independently, `dispatch_end` may appear before or after `background_start/end`; the logical completion invariant is that `request_end` follows `background_end`. Correlation uses the explicitly propagated `request_id`, never timestamp proximity. No CUDA, NVTX, Nsight or device-memory event is emitted by this slice. Exact-head host CI and review are pending.
 
 ## 5. Event vocabulary and connector mapping
 
 Common event kinds:
 
 - Request lifecycle: `request_start`, `request_end`, `request_error`, `request_cancel`.
+- Dispatch/background boundary: `dispatch_end`, `background_start`, `background_end`.
 - Compute: `kernel_launch`, `kernel_complete` only when completion is actually observed.
 - Memory: `alloc`, `free`, `memcpy`, `memset`, `oom`, `fallback`.
 - Execution coordination: `sync`, `graph_capture_start`, `graph_capture_end`, `graph_instantiate`, `graph_launch`.
@@ -201,7 +210,7 @@ Do not open one broad PR spanning the shared core, server, CUDA and Nsight layer
 
 ## 11. Current evidence boundary
 
-This document is a design based on the current LEONES NEPENTHES implementation and the TensorFold 1.2.10 source audit. It does not claim a TensorFold connector, TensorFold event stream, CI pass, build, GPU capture or measured overhead exists. Those are separate acceptance gates.
+This document contains the design contract and a host-only TensorFold connector candidate in [PR #6](https://github.com/robertosantosx2/TensorFold/pull/6). The PR is not yet accepted: exact-head host CI and review are pending. No merged runtime acceptance, physical GPU capture, C07/C08 or measured overhead is claimed.
 
 ## Source audit — TensorFold 1.2.10
 

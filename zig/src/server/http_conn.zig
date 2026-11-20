@@ -58,6 +58,11 @@ pub const Conn = struct {
     /// Per request, reset by ``readRequest``.
     close: bool = true,
     response_complete: bool = false,
+    response_status: u16 = 0,
+    /// Set by Server.dispatch once per HTTP request; a keep-alive connection receives a new value each time.
+    nepenthes_request_id: u64 = 0,
+    nepenthes_request_started_ns: u64 = 0,
+    nepenthes_background_owned: bool = false,
     version: []const u8 = "HTTP/0.9",
     method: []const u8 = "",
     path: []const u8 = "",
@@ -358,6 +363,7 @@ pub const Conn = struct {
     /// Python's ``send_response`` head: status line, Server and Date (nothing for HTTP/0.9).
     pub fn startResponse(c: *Conn, code: u16, phrase: ?[]const u8) Allocator.Error!void {
         c.response_complete = false;
+        if (c.nepenthes_request_id != 0) c.response_status = code;
         c.out.clearRetainingCapacity();
         if (c.quiet_log) c.quiet_log = false else log.request(c, code);
         if (code >= 200 and !c.counted) {

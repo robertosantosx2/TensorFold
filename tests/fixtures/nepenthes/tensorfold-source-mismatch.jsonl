@@ -1,0 +1,2 @@
+{"schema_version":"1.0","run_id":"run-tensorfold-invalid-1","event_id":"tf-1","source":"tensorfold","timestamp_unix_ns":1800000000000000000,"monotonic_ns":8100000000,"request_id":1,"event_kind":"request_start","label":"http.request","value0":0,"value1":0,"duration_ns":0,"flags":0,"clock_domain":"steady_clock"}
+{"schema_version":"1.0","run_id":"run-tensorfold-invalid-1","event_id":"tf-summary-2","source":"llama.cpp","timestamp_unix_ns":1800000000502000000,"event_kind":"sink_summary","events_drained":1,"dropped_events":0,"write_errors":0}
