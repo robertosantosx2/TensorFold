@@ -62,3 +62,8 @@ To close this last gap without terminal work, the MSI-side NEPENTHES-specific sn
 ## Guardrails
 
 No local checkout was accessed. No branch was deleted, rebased, force-pushed or merged by this audit. No runtime code was changed in this reconciliation branch; the only proposed source change is documentation that corrects the stale status in `docs/nepenthes/README.md`.
+
+
+## Follow-up evidence ticket
+
+The remaining MSI-side snapshot is tracked in [issue #8](https://github.com/robertosantosx2/TensorFold/issues/8). It defines the read-only evidence fields, per-file SHA-256 comparison, privacy exclusions and non-destructive guardrails. Until that artifact is attached or committed to an audit branch, the MSI↔GitHub coherence result remains **unproven**, not failed and not assumed.
