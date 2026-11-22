@@ -1,6 +1,6 @@
 # NEPENTHES architecture for inference engines
 
-**Status:** design contract accepted; [TensorFold issue #1](https://github.com/robertosantosx2/TensorFold/issues/1) closed. Shared LEONES envelope validator merged; host-only runtime connector is implemented in [PR #6](https://github.com/robertosantosx2/TensorFold/pull/6) for [issue #3](https://github.com/robertosantosx2/TensorFold/issues/3), pending exact-head host CI and review. No CUDA/NVTX/Nsight acceptance is claimed.
+**Status (2026-11-22):** design contract accepted; [TensorFold issue #1](https://github.com/robertosantosx2/TensorFold/issues/1) closed; shared LEONES envelope validator merged; host-only runtime connector merged to `main` by [PR #6](https://github.com/robertosantosx2/TensorFold/pull/6) for [issue #3](https://github.com/robertosantosx2/TensorFold/issues/3). The merged code is present in `main` at `50f1a34cbc1f111fa6e7afbedc199eee0d8643e5`. GitHub currently reports no check runs and no PR reviews for the exact PR head; therefore host-CI/review acceptance is **not evidenced here**. No CUDA/NVTX/Nsight, MSI runtime, performance or overhead acceptance is claimed.
 **Scope:** one shared NEPENTHES core in LEONES and thin, engine-owned connectors.
 
 **Global authority:** [LEONES `NEPENTHES-INDEX.md`](https://github.com/robertosantosx2/LEONES/blob/main/research/moe/tandem.cpp/NEPENTHES-INDEX.md) is the sole source of truth for priorities, project status and architecture decisions. This TensorFold document is a subordinate engine-specific annex; if it diverges from the INDEX, the INDEX prevails.
@@ -69,9 +69,9 @@ The shared-envelope compatibility gate is closed: [LEONES PR #210](https://githu
 Tandem.cpp's existing work is a connector/reference implementation, not a second core. llama.cpp's current connector and AIPerf path are the second reference. Any differences between their actual event envelopes must be reconciled against repository code and fixtures before freezing the shared schema.
 
 
-## 3.1 Current implementation gate
+## 3.1 Current implementation status
 
-The first TensorFold runtime slice is now unblocked by the accepted LEONES validator and the completed ATC overlap analysis. The next PR is host-only: opt-in/disabled no-op, bounded sink, request identity allocated per HTTP request at `routes.dispatch`, and privacy-safe events. It must not add CUDA probes, synchronization, NVTX/Nsight calls, or mandatory dependencies. Because HTTP keep-alive reuses `Conn`, a connection ID is not a request ID. Background/streaming work must not be reported as complete merely because `dispatch` returned; either propagate the same request ID to its actual completion or emit a clearly distinct dispatch-boundary event. Host acceptance must cover multiple requests on one connection, concurrent requests, balanced lifecycle where observable, drops/errors, final `sink_summary`, and disabled path.
+The host-only runtime connector was merged by PR #6 into `main`; the merged implementation is the source of truth, not the former PR branch. It provides opt-in/disabled instrumentation, a bounded 256-record queue, non-blocking producer behavior, a dedicated writer and terminal `sink_summary`; request IDs are allocated per HTTP request, including keep-alive reuse. For detached Responses work, the owning request ID and start timestamp are propagated to the background job; `dispatch_end` marks the HTTP boundary and `request_end` follows actual background completion. The connector is host-only and does not add CUDA/NVTX/Nsight probes. The PR description documents the intended host tests, but GitHub currently exposes zero check runs and zero submitted PR reviews for the exact PR head; do not interpret merge state alone as a passing CI or full acceptance receipt.
 
 ## 4. Canonical event envelope
 
@@ -124,7 +124,7 @@ The numbers and operation labels above are illustrative fixtures, not measured T
 
 ## Runtime implementation status
 
-The host-only connector candidate is [TensorFold PR #6](https://github.com/robertosantosx2/TensorFold/pull/6), tracked by [issue #3](https://github.com/robertosantosx2/TensorFold/issues/3). It emits HTTP dispatch/request and explicitly owned Responses background lifecycle events plus `sink_summary`. For background requests, `dispatch_end` marks the HTTP boundary; `request_end` is emitted only after the detached job actually ends. A client disconnect emits `request_cancel`; a non-cancellation failure emits `request_error`. Their values contain only numeric status/cancel/failure flags. Streaming work remains synchronous through the dispatch call. Because the worker is scheduled independently, `dispatch_end` may appear before or after `background_start/end`; the logical completion invariant is that `request_end` follows `background_end`. Correlation uses the explicitly propagated `request_id`, never timestamp proximity. No CUDA, NVTX, Nsight or device-memory event is emitted by this slice. Exact-head host CI and review are pending.
+The host-only connector is merged in [TensorFold PR #6](https://github.com/robertosantosx2/TensorFold/pull/6) at merge commit `50f1a34cbc1f111fa6e7afbedc199eee0d8643e5`; [issue #3](https://github.com/robertosantosx2/TensorFold/issues/3) is closed. It emits HTTP dispatch/request and explicitly owned Responses background lifecycle events plus `sink_summary`. For background requests, `dispatch_end` marks the HTTP boundary; `request_end` is emitted only after the detached job actually ends. A client disconnect emits `request_cancel`; a non-cancellation failure emits `request_error`. Their values contain only numeric status/cancel/failure flags. Streaming work remains synchronous through the dispatch call. Because the worker is scheduled independently, `dispatch_end` may appear before or after `background_start/end`; the logical completion invariant is that `request_end` follows `background_end`. Correlation uses the explicitly propagated `request_id`, never timestamp proximity. No CUDA, NVTX, Nsight or device-memory event is emitted by this slice. GitHub reports zero check runs and zero submitted reviews for the exact PR head, so those acceptance receipts remain unverified.
 
 ## 5. Event vocabulary and connector mapping
 
@@ -210,7 +210,7 @@ Do not open one broad PR spanning the shared core, server, CUDA and Nsight layer
 
 ## 11. Current evidence boundary
 
-This document contains the design contract and a host-only TensorFold connector candidate in [PR #6](https://github.com/robertosantosx2/TensorFold/pull/6). The PR is not yet accepted: exact-head host CI and review are pending. No merged runtime acceptance, physical GPU capture, C07/C08 or measured overhead is claimed.
+This document contains the design contract and the merged host-only TensorFold connector from [PR #6](https://github.com/robertosantosx2/TensorFold/pull/6). Merge state is confirmed; exact-head host-CI and review receipts are not present in GitHub (zero check runs and zero submitted reviews). No physical GPU capture, C07/C08, CUDA/NVTX/Nsight acceptance or measured overhead is claimed.
 
 ## Source audit — TensorFold 1.2.10
 
