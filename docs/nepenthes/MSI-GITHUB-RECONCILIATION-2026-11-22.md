@@ -57,7 +57,7 @@ Therefore:
 - The two remaining branches are documentation deltas and are not alternate runtime implementations.
 - MSI-side equality is **not yet evidenced** by the published audit snapshot. No local state is inferred, discarded or declared synchronized.
 
-To close this last gap without terminal work, the MSI-side NEPENTHES-specific snapshot (branch/HEAD, worktree status, changed/untracked paths and content hashes for the NEPENTHES files) must be published as a separate evidence artifact in GitHub. Compare that artifact against `main@50f1a34...`; do not use the #1879 checkout's old 512/286 file counts as evidence about NEPENTHES.
+That initial evidence gap was partially addressed by the read-only MSI snapshot published after this report's initial cut-off. The snapshot identifies `/home/ssantos/tensorfold` on `nepenthes/tensorfold` at `21be08979396fd73c146dc33fdb744f9df722a45`, tracking `fork/nepenthes/tensorfold` with `0 ahead / 0 behind`; the tracked and untracked working-tree sections are empty. The artifact and SHA-256 manifest are preserved in [interaccion-MSI commit `80eff284457f79e268ab0fbabb01ce0d2df6bae7`](https://github.com/robertosantosx2/interaccion-MSI/commit/80eff284457f79e268ab0fbabb01ce0d2df6bae7). This identifies and verifies the principal checkout's clean branch state, but does not provide remote URLs, linked-worktree/stash inventories, or per-file hashes/sizes/modes for every NEPENTHES path. Therefore exhaustive MSI↔GitHub file-level coherence and auxiliary-worktree state remain unproven. Do not use the #1879 checkout's old 512/286 file counts as evidence about NEPENTHES.
 
 ## Guardrails
 
@@ -66,7 +66,7 @@ No local checkout was accessed. No branch was deleted, rebased, force-pushed or 
 
 ## Follow-up evidence ticket
 
-The remaining MSI-side snapshot is tracked in [issue #8](https://github.com/robertosantosx2/TensorFold/issues/8). It defines the read-only evidence fields, per-file SHA-256 comparison, privacy exclusions and non-destructive guardrails. Until that artifact is attached or committed to an audit branch, the MSI↔GitHub coherence result remains **unproven**, not failed and not assumed.
+The MSI checkout audit was closed in [issue #8](https://github.com/robertosantosx2/TensorFold/issues/8) with the scope and limitations recorded. The published snapshot supports the principal-checkout finding above; it is not a complete per-file or all-worktrees certification. The residual limitation is explicit and must not be interpreted as a failure or as assumed synchronization.
 
 
 ## Merged implementation review checkpoint
@@ -75,4 +75,4 @@ A read-only inspection of merge commit `50f1a34cbc1f111fa6e7afbedc199eee0d8643e5
 
 This strengthens the provenance and implementation review of the merged source. The earlier interpretation of empty TensorFold-native check endpoints was incomplete: the exact head was tested by the cross-repository LEONES workflow, with five successful checks recorded in the authoritative INDEX and accepted in LEONES PR #220. The TensorFold PR review endpoint still has no submitted reviews; that is separate from host-CI acceptance. The merge commit's message and diff remain source-history evidence, while the LEONES cross-repository receipts establish the host validation.
 
-The documentation-only PR #7 is the proposed correction for the stale status wording still present on `main`'s NEPENTHES README. Its branch now contains the reconciled status and this report; it remains draft and unmerged by design.
+The documentation-only PR #7 carries the reconciled status and this report. Its merge incorporates the remote implementation status and the subsequent bounded MSI checkout evidence; it does not certify exhaustive file-level coherence or physical GPU acceptance.
