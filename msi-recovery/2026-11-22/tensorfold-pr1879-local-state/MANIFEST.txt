@@ -1,0 +1,17 @@
+TensorFold MSI recovery snapshot
+Date: 2026-11-22
+Original path: /home/ssantos/tensorfold-pr1879-real-validation-20261109/TensorFold
+Branch: fix/qwen35-cuda-lazy-scratch
+Base HEAD: 12bd7cb3b14e478d370e41c8a31485899f4be9b7
+Origin: https://github.com/robertosantosx2/TensorFold.git
+Staged summary:
+ 808 files changed, 4113 insertions(+), 51789 deletions(-)
+Unstaged summary:
+ 1 file changed, 1 insertion(+)
+Untracked files:
+SHA256:
+f3e7bd0f36f072ad697a5fc7229d1739fb6335fb8907f293cd1a7519350d4b41  /home/ssantos/tensorfold-msi-recovery-2026-11-22/staged.patch
+1c72d69abfd05d0817d7a51f8805bb0bc803cc3449e4a311af559c005d778a3a  /home/ssantos/tensorfold-msi-recovery-2026-11-22/unstaged.patch
+7ed5b8adff5b2e507a7d2d2efb959f0a228ab18ab6da91639f37903af7626284  /home/ssantos/tensorfold-msi-recovery-2026-11-22/MANIFEST.txt
+7f6affe07d1f8336f6657356b745d9404a15277e4a640f47f0b52d2e1c397baf  /home/ssantos/tensorfold-msi-recovery-2026-11-22/staged-files.txt
+624b11958a503bcd786ae02d1641637e7639c4f6ee678429cee5891354dcf17b  /home/ssantos/tensorfold-msi-recovery-2026-11-22/status.txt
