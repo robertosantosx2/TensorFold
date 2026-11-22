@@ -67,3 +67,12 @@ No local checkout was accessed. No branch was deleted, rebased, force-pushed or 
 ## Follow-up evidence ticket
 
 The remaining MSI-side snapshot is tracked in [issue #8](https://github.com/robertosantosx2/TensorFold/issues/8). It defines the read-only evidence fields, per-file SHA-256 comparison, privacy exclusions and non-destructive guardrails. Until that artifact is attached or committed to an audit branch, the MSI↔GitHub coherence result remains **unproven**, not failed and not assumed.
+
+
+## Merged implementation review checkpoint
+
+A read-only inspection of merge commit `50f1a34cbc1f111fa6e7afbedc199eee0d8643e5` confirms that the merged PR contains a 16-commit implementation sequence, not merely the initial connector draft. The merge history records targeted hardening for cancellation value consistency, writer-thread joins in host tests, copying only initialized queue bytes, distinguishing disconnect from incomplete response, separating incomplete dispatch from client cancellation, emitting `request_end` after background result commit, keep-alive request identity on a reused connection, final lifecycle emission before background-job release, and exactly-once writer-error summary coverage.
+
+This strengthens the provenance and implementation review of the merged source. It does **not** replace missing exact-head CI/review receipts: the queried GitHub status endpoint still returns no status checks, the PR-triggered workflow-run endpoint returns no runs, and the PR review endpoint returns no submitted reviews for `c258ec930b4ea8f0d0bc785a984d2114bf041fb9`. The merge commit's message and diff are source-history evidence, not a test execution receipt.
+
+The documentation-only PR #7 is the proposed correction for the stale status wording still present on `main`'s NEPENTHES README. Its branch now contains the reconciled status and this report; it remains draft and unmerged by design.
