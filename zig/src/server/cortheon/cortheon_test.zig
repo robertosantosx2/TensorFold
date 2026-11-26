@@ -294,16 +294,16 @@ test "the model's own search runs on the server and only the answer reaches the 
 }
 
 test "a fresh question on current facts is researched before the model starts" {
-    var rig: Rig = .{ .eng = .{ .script = &.{ "1. Zig latest release notes\n2. Zig 0.17 changelog\n", "The latest is 0.17." } } };
+    var rig: Rig = .{ .eng = .{ .script = &.{ "Zig latest release notes", "The latest is 0.17." } } };
     try rig.start(true);
     defer rig.stop();
     var arena: std.heap.ArenaAllocator = .init(gpa);
     defer arena.deinit();
-    const got = try rig.ask(arena.allocator(), "{\"messages\": [{\"role\": \"user\", \"content\": \"What is the latest release of Zig?\"}]}");
-    try std.testing.expect(rig.eng.saw(0, "You write web search queries"));
-    try std.testing.expectEqual(@as(usize, 2), rig.web.searches);
-    try std.testing.expect(rig.eng.saw(1, "Web results for \"Zig latest release notes\""));
-    try std.testing.expect(rig.eng.saw(1, "Web results for \"Zig 0.17 changelog\""));
+    const got = try rig.ask(arena.allocator(), "{\\"messages\\": [{\\"role\\": \\"user\\", \\"content\\": \\"What is the latest release of Zig?\\"}]}");
+    try std.testing.expect(rig.eng.saw(0, "Write one concise web search query"));
+    try std.testing.expectEqual(@as(usize, 1), rig.web.searches);
+    try std.testing.expect(rig.eng.saw(1, "Web results for \\"Zig latest release notes\\""));
+    try std.testing.expect(!rig.eng.saw(1, "Web results for \\"Zig 0.17 changelog\\""));
     try std.testing.expect(rig.eng.saw(1, "Page: https://docs.example/x (HTTP 200"));
     const s = got.body.?.get("cortheon").?;
     try std.testing.expect(s.get("research_first").?.bool);
@@ -311,7 +311,7 @@ test "a fresh question on current facts is researched before the model starts" {
     try std.testing.expectEqualStrings("https://docs.example/x", s.get("sources").?.array[0].string);
     // no URL in the answer: one more round for its sources, appended after it
     try std.testing.expect(rig.eng.saw(2, checks.sources_note));
-    try std.testing.expectEqualStrings("The latest is 0.17.\n\nOK", message(got.body.?).strField("content").?);
+    try std.testing.expectEqualStrings("The latest is 0.17.\\n\\nOK", message(got.body.?).strField("content").?);
 }
 
 test "research progress cannot open a stream before its final request is admitted" {
@@ -430,7 +430,7 @@ test "the research task keeps a character that straddles the goal cap whole" {
     const content = try json.quote(a, words.items, .{});
     const body = try std.fmt.allocPrint(a, "{{\"messages\":[{{\"role\":\"user\",\"content\":{s}}}]}}", .{content});
     _ = try rig.ask(a, body);
-    try std.testing.expect(rig.eng.saw(0, "You write web search queries"));
+    try std.testing.expect(rig.eng.saw(0, "Write one concise web search query"));
     const prompt = rig.eng.prompts.items[0];
     try std.testing.expect(std.unicode.utf8ValidateSlice(prompt));
     try std.testing.expect(std.mem.indexOf(u8, prompt, "What is the latest release of Zig?") != null);
