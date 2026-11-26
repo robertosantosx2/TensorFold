@@ -12,8 +12,9 @@ const seen_url = @import("seen.zig");
 const Value = json.Value;
 const Allocator = std.mem.Allocator;
 
-const max_queries = 3;
-const max_pages = 3;
+// Keep pre-research bounded for small local context windows; model-driven tools can continue later.
+const max_queries = 1;
+const max_pages = 1;
 
 const planner = "You write web search queries for a task that needs current information from the web. Reply with up to 3 short queries, one per line, and nothing else. Each query names the product, library or topic, with its version when the task gives one, and aims at official documentation, release notes, changelogs, papers or the project's repository.";
 
