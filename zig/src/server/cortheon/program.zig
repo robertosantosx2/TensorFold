@@ -53,6 +53,7 @@ const external_source = [_][]const u8{ "arxiv", "doi", "github", "online", "pape
 const explicit_frontier = [_][]const u8{ "state of the art", "state-of-the-art", "frontier", "official documentation", "official docs", "official guidance", "release notes", "release note", "scientific paper", "primary research", "recent paper", "recent research", "maintained repositories", "maintained repos", "maintained implementations", "reference repositories", "reference implementations", "reference implementation", "installed version", "installed versions", "exact version", "exact versions", "search the web", "search web", "online research", "look it up", "look up the docs" };
 const quality_frontier = [_][]const u8{ "production-ready", "production ready", "best practice", "best practices", "best available", "industry-standard", "industry standard", "well-maintained", "well maintained", "battle-tested", "battle tested" };
 const research_report = [_][]const u8{ "research brief", "white paper" };
+const spanish_research = [_][]const u8{ "investiga", "investigacion", "investigación", "busca en la web", "consulta la web", "investiga en la web", "fuentes oficiales", "última versión", "ultima version", "novedades de", "notas de versión", "notas de version", "documentación oficial", "documentacion oficial" };
 const repository_phrases = [_][]const u8{ "github.com/", "gitlab.com/", "bitbucket.org/", "github repo", "github repository", "open-source code", "open source code", "reference code", "source code of" };
 const negated_change = [_][]const u8{ "do not change", "do not modify", "do not edit", "don't change", "don't modify", "don't edit", "must not change", "must not modify", "must not edit", "without changing", "without modifying", "without editing" };
 
@@ -154,6 +155,7 @@ fn kindOf(a: Allocator, goal: []const u8, p: Paths) Kind {
     if (p.code) return .code;
     if (p.document) return .documents;
     if ((hasWord(goal, &report_words) or hasPhrase(goal, &research_report)) and hasWord(goal, &external_source) and !requestsChange(a, goal)) return .research;
+    if (hasPhrase(goal, &spanish_research) and !requestsChange(a, goal)) return .research;
     if (hasWord(goal, &code_hints)) return .code;
     if (hasWord(goal, &document_hints) and hasWord(goal, &cross_source_hints)) return .documents;
     if (hasWord(goal, &research_hints)) return .research;
@@ -268,7 +270,7 @@ pub fn classify(a: Allocator, goal: []const u8) Task {
         .decision => .decision,
         .general => .answer,
     };
-    const explicit = hasPhrase(goal, &explicit_frontier) or freshAsk(goal);
+    const explicit = hasPhrase(goal, &explicit_frontier) or hasPhrase(goal, &spanish_research) or freshAsk(goal);
     const frontier = switch (kind) {
         .code => explicit or (hasPhrase(goal, &quality_frontier) and hasWord(goal, &technology)) or
             (!p.local_code and hasWord(goal, &implementation) and hasWord(goal, &technology)),
@@ -362,6 +364,17 @@ test "code changes, research and plain answers classify as Cortheon does" {
     const named = classify(a, "Explain src\\fix.py");
     try std.testing.expectEqual(Kind.code, named.kind);
     try std.testing.expectEqual(Deliverable.code_understanding, named.deliverable);
+}
+
+test "Spanish current-version requests trigger web research" {
+    const a = std.testing.allocator;
+    const latest = classify(a, "Investiga en la web la última versión oficial de TensorFold y compara sus novedades con la 1.3.5.");
+    try std.testing.expectEqual(Kind.research, latest.kind);
+    try std.testing.expectEqual(Deliverable.research_answer, latest.deliverable);
+    try std.testing.expect(latest.frontier);
+    const releases = classify(a, "Busca las notas de versión oficiales y las novedades de TensorFold.");
+    try std.testing.expectEqual(Deliverable.research_answer, releases.deliverable);
+    try std.testing.expect(releases.frontier);
 }
 
 test "harness context and transform asks do not read as research" {
